@@ -56,6 +56,28 @@ try
     {
         params params;
 
+        auto&& sources = args["SOURCE"];
+        params.sources = std::ranges::to< decltype(params.sources) >(sources.values());
+
+        auto&& destination = args["DESTINATION"];
+        auto&& target = args["--target"];
+        if (target)
+        {
+            params.target = target.value();
+            if (fs::is_directory(params.target))
+            {
+                // DESTINATION will capture the last positional parameter,
+                // but if --target was specified that value belongs in SOURCES
+                if (destination) params.sources.push_back(destination.value());
+            }
+            else throw pgm::invalid_argument{"target '" + params.target.string() + "' is not a directory"};
+        }
+        else
+        {
+            if (destination) params.target = destination.value();
+            else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
+        }
+
         asio::thread_pool pool{1};
         state state;
 
