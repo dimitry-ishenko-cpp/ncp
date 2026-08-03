@@ -8,7 +8,10 @@ pkg_check_modules(asio REQUIRED IMPORTED_TARGET asio)
 
 include(GNUInstallDirs)
 
-add_executable(ncp ncp.cpp)
+add_executable(ncp
+    ncp.cpp
+    walk_task.cpp
+)
 target_link_libraries(ncp PRIVATE PkgConfig::asio)
 
 install(TARGETS ncp DESTINATION ${CMAKE_INSTALL_BINDIR})
