@@ -6,13 +6,15 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 #include "pgm/args.hpp"
+#include "state.hpp"
 
+#include <asio.hpp>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string_view>
 
-#include <asio.hpp>
+namespace fs = std::filesystem;
 
 void show_usage(const pgm::args& args, std::string_view name);
 void show_version(std::string_view name);
@@ -20,7 +22,6 @@ void show_version(std::string_view name);
 int main(int argc, char* argv[])
 try
 {
-    namespace fs = std::filesystem;
     auto name = fs::path{argv[0]}.filename().string();
 
     pgm::args args
@@ -30,7 +31,7 @@ try
         { "-v", "--version",        "Show program version and exit" },
 
         { "SOURCE", pgm::mul,       "Files/directories to copy or move" },
-        { "DEST", pgm::opt,         "Destination file or directory" },
+        { "DESTINATION", pgm::opt,  "Destination file or directory" },
     };
 
     std::exception_ptr ep;
@@ -48,11 +49,18 @@ try
 
     else
     {
-        asio::io_context ctx;
+        state state;
 
-        // TODO
-
-        ctx.run();
+        asio::io_context io;
+        asio::signal_set sigset{ io, SIGINT, SIGTERM };
+        sigset.async_wait([&](auto&& ec, int signal)
+        {
+            if (!ec)
+            {
+                std::cerr << "Received signal " << signal << ", exiting..." << std::endl;
+                state.quit = true;
+            }
+        });
     }
 
     return 0;
