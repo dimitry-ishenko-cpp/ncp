@@ -103,6 +103,16 @@ try
 
     return 0;
 }
+catch (const fs::filesystem_error& e)
+{
+    auto msg = e.code().message();
+
+    if (!e.path1().empty())
+        std::cerr << msg << ": " << e.path1() << std::endl;
+    else std::cerr << msg << std::endl;
+
+    return 1;
+}
 catch (const std::exception& e)
 {
     std::cerr << e.what() << std::endl;
