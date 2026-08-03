@@ -5,13 +5,13 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
-#include "params.hpp"
+#include "options.hpp"
 #include "state.hpp"
 
 #include <asio.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
-void walk_task(params p, asio::thread_pool& pool, state& s)
+void walk_task(const options& options, asio::thread_pool& pool, state& state)
 {
     // TODO
 }

@@ -5,7 +5,7 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
-#include "params.hpp"
+#include "options.hpp"
 #include "pgm/args.hpp"
 #include "state.hpp"
 
@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 void show_usage(const pgm::args& args, std::string_view name);
 void show_version(std::string_view name);
 
-void walk_task(params, asio::thread_pool&, state&);
+void walk_task(const options&, asio::thread_pool&, state&);
 
 int main(int argc, char* argv[])
 try
@@ -54,27 +54,27 @@ try
 
     else
     {
-        params params;
+        options options;
 
         auto&& sources = args["SOURCE"];
-        params.sources = std::ranges::to< decltype(params.sources) >(sources.values());
+        options.sources = std::ranges::to< decltype(options.sources) >(sources.values());
 
         auto&& destination = args["DESTINATION"];
         auto&& target = args["--target"];
         if (target)
         {
-            params.target = target.value();
-            if (fs::is_directory(params.target))
+            options.target = target.value();
+            if (fs::is_directory(options.target))
             {
                 // DESTINATION will capture the last positional parameter,
                 // but if --target was specified that value belongs in SOURCES
-                if (destination) params.sources.push_back(destination.value());
+                if (destination) options.sources.push_back(destination.value());
             }
-            else throw pgm::invalid_argument{"target '" + params.target.string() + "' is not a directory"};
+            else throw pgm::invalid_argument{"target '" + options.target.string() + "' is not a directory"};
         }
         else
         {
-            if (destination) params.target = destination.value();
+            if (destination) options.target = destination.value();
             else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
         }
 
@@ -93,7 +93,7 @@ try
         });
 
         auto async_walk = std::async(std::launch::async,
-            walk_task, std::move(params), std::ref(pool), std::ref(state)
+            walk_task, std::cref(options), std::ref(pool), std::ref(state)
         );
         async_walk.get();
 

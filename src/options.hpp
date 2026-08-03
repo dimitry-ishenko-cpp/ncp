@@ -13,7 +13,7 @@
 namespace fs = std::filesystem;
 
 ////////////////////////////////////////////////////////////////////////////////
-struct params
+struct options
 {
     std::vector<fs::path> sources;
     fs::path target;
