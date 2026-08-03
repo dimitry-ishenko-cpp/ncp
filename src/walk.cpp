@@ -48,6 +48,7 @@ void walk_dir(state& state, asio::thread_pool& pool, const fs::path& source, con
 
     for (auto&& entry : walk(source))
     {
+        if (state.quit.load(std::memory_order_relaxed)) break;
         auto target_path = target / fs::relative(entry.path(), source);
 
         if (entry.is_directory()) fs::create_directory(target_path);
@@ -61,6 +62,7 @@ void walk(state& state, const options& options, asio::thread_pool& pool)
     {
         for (auto&& source : options.sources)
         {
+            if (state.quit.load(std::memory_order_relaxed)) break;
             if (!fs::exists(source)) throw_filesystem_error(std::errc::no_such_file_or_directory, source);
 
             if (fs::is_directory(source))
