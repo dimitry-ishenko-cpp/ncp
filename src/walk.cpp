@@ -67,7 +67,7 @@ void walk(state& state, const options& options, asio::thread_pool& pool)
 
             if (fs::is_directory(source))
             {
-                auto trailing_slash = source.native().back() == fs::path::preferred_separator;
+                auto trailing_slash = !source.has_filename();
                 auto target = trailing_slash ? options.target : options.target / source.filename();
 
                 walk_dir(state, pool, source, target);
