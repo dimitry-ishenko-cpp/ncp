@@ -11,7 +11,7 @@
 #include <asio.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
-void walk_task(const options& options, asio::thread_pool& pool, state& state)
+void walk_task(state& state, const options& options, asio::thread_pool& pool)
 {
     // TODO
 }

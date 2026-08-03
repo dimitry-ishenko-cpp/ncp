@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 void show_usage(const pgm::args& args, std::string_view name);
 void show_version(std::string_view name);
 
-void walk_task(const options&, asio::thread_pool&, state&);
+void walk_task(state&, const options&, asio::thread_pool&);
 
 int main(int argc, char* argv[])
 try
@@ -93,7 +93,7 @@ try
         });
 
         auto async_walk = std::async(std::launch::async,
-            walk_task, std::cref(options), std::ref(pool), std::ref(state)
+            walk_task, std::ref(state), std::cref(options), std::ref(pool)
         );
         async_walk.get();
 
