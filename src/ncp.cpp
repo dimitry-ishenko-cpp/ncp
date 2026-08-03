@@ -5,19 +5,24 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
+#include "params.hpp"
 #include "pgm/args.hpp"
 #include "state.hpp"
 
 #include <asio.hpp>
 #include <exception>
 #include <filesystem>
+#include <future>
 #include <iostream>
+#include <ranges>
 #include <string_view>
 
 namespace fs = std::filesystem;
 
 void show_usage(const pgm::args& args, std::string_view name);
 void show_version(std::string_view name);
+
+void walk_task(params, asio::thread_pool&, state&);
 
 int main(int argc, char* argv[])
 try
@@ -49,6 +54,9 @@ try
 
     else
     {
+        params params;
+
+        asio::thread_pool pool{1};
         state state;
 
         asio::io_context io;
@@ -61,6 +69,14 @@ try
                 state.quit = true;
             }
         });
+
+        auto async_walk = std::async(std::launch::async,
+            walk_task, std::move(params), std::ref(pool), std::ref(state)
+        );
+        async_walk.get();
+
+        pool.join();
+        sigset.cancel();
     }
 
     return 0;
