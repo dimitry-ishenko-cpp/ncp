@@ -9,9 +9,9 @@ pkg_check_modules(asio REQUIRED IMPORTED_TARGET asio)
 include(GNUInstallDirs)
 
 add_executable(ncp
-    copy_task.cpp
+    copy.cpp
     ncp.cpp
-    walk_task.cpp
+    walk.cpp
 )
 target_link_libraries(ncp PRIVATE PkgConfig::asio)
 
