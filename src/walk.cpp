@@ -20,11 +20,11 @@ void copy(state& state, const fs::path&, const fs::path&);
 ////////////////////////////////////////////////////////////////////////////////
 inline void throw_filesystem_error(std::errc cond)
 {
-    throw fs::filesystem_error{"walk_task", std::make_error_code(cond)};
+    throw fs::filesystem_error{"walk", std::make_error_code(cond)};
 }
 inline void throw_filesystem_error(std::errc cond, const fs::path& path)
 {
-    throw fs::filesystem_error{"walk_task", path, std::make_error_code(cond)};
+    throw fs::filesystem_error{"walk", path, std::make_error_code(cond)};
 }
 
 std::generator<fs::directory_entry> walk(const fs::path& dir)
@@ -56,7 +56,7 @@ void walk_dir(state& state, asio::thread_pool& pool, const fs::path& source, con
     }
 }
 
-void walk(state& state, const options& options, asio::thread_pool& pool)
+void walk_all(state& state, const options& options, asio::thread_pool& pool)
 {
     if (fs::is_directory(options.target))
     {

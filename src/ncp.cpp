@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 void show_usage(const pgm::args& args, std::string_view name);
 void show_version(std::string_view name);
 
-void walk(state&, const options&, asio::thread_pool&);
+void walk_all(state&, const options&, asio::thread_pool&);
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
@@ -95,7 +95,7 @@ try
         auto sigset_task = std::async(std::launch::async, [&]{ io.run(); });
 
         auto walk_task = std::async(std::launch::async,
-            walk, std::ref(state), std::cref(options), std::ref(pool)
+            walk_all, std::ref(state), std::cref(options), std::ref(pool)
         );
         walk_task.get();
 
