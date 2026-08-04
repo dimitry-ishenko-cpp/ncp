@@ -5,6 +5,7 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
+#include "error.hpp"
 #include "options.hpp"
 #include "pgm/args.hpp"
 #include "signal.hpp"
@@ -98,17 +99,12 @@ try
 }
 catch (const fs::filesystem_error& e)
 {
-    auto msg = e.code().message();
-
-    if (!e.path1().empty())
-        std::cerr << msg << ": " << e.path1() << std::endl;
-    else std::cerr << msg << std::endl;
-
+    print_error(e);
     return 1;
 }
 catch (const std::exception& e)
 {
-    std::cerr << e.what() << std::endl;
+    print_error(e);
     return 1;
 };
 
