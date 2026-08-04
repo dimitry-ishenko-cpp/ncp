@@ -15,7 +15,7 @@
 
 namespace fs = std::filesystem;
 
-void copy_task(state& state, const fs::path&, const fs::path&);
+void copy_task(state& state, const options& options, const fs::path&, const fs::path&);
 
 ////////////////////////////////////////////////////////////////////////////////
 inline void throw_filesystem_error(std::errc cond)
@@ -36,15 +36,15 @@ std::generator<fs::directory_entry> walk(const fs::path& dir)
     }
 }
 
-void post_copy_task(state& state, asio::thread_pool& pool, fs::path source, fs::path target)
+void post_copy_task(state& state, const options& options, asio::thread_pool& pool, fs::path source, fs::path target)
 {
-    asio::post(pool, [&state, source = std::move(source), target = std::move(target)]{
-        copy_task(state, source, target);
+    asio::post(pool, [&state, &options, source = std::move(source), target = std::move(target)]{
+        copy_task(state, options, source, target);
     });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void walk_dir(state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
+void walk_dir(state& state, const options& options, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
 {
     fs::create_directory(target);
 
@@ -54,7 +54,7 @@ void walk_dir(state& state, asio::thread_pool& pool, const fs::path& source, con
         auto target_path = target / fs::relative(entry.path(), source);
 
         if (entry.is_directory()) fs::create_directory(target_path);
-        else post_copy_task(state, pool, entry.path(), target_path);
+        else post_copy_task(state, options, pool, entry.path(), target_path);
     }
 }
 
@@ -72,12 +72,12 @@ void walk_task(state& state, const options& options, asio::thread_pool& pool)
                 auto trailing_slash = !source.has_filename();
                 auto target = trailing_slash ? options.target : options.target / source.filename();
 
-                walk_dir(state, pool, source, target);
+                walk_dir(state, options, pool, source, target);
             }
             else
             {
                 auto target = options.target / source.filename();
-                post_copy_task(state, pool, source, target);
+                post_copy_task(state, options, pool, source, target);
             }
         }
     }
@@ -90,7 +90,7 @@ void walk_task(state& state, const options& options, asio::thread_pool& pool)
 
         if (!fs::exists(source)) throw_filesystem_error(std::errc::no_such_file_or_directory, source);
 
-        if (fs::is_directory(source)) walk_dir(state, pool, source, target);
-        else post_copy_task(state, pool, source, target);
+        if (fs::is_directory(source)) walk_dir(state, options, pool, source, target);
+        else post_copy_task(state, options, pool, source, target);
     }
 }
