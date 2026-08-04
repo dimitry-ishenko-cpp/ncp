@@ -14,7 +14,6 @@
 #include <asio.hpp>
 #include <exception>
 #include <filesystem>
-#include <iostream>
 #include <print>
 #include <ranges>
 #include <string_view>
@@ -114,10 +113,10 @@ void show_usage(const pgm::args& args, std::string_view name)
     auto preamble = R"(
 ncp – new and improved, now asbestos-free copy utility.)";
 
-    std::cout << args.usage(name, preamble) << std::endl;
+    std::print("{}\n", args.usage(name, preamble));
 }
 
 void show_version(std::string_view name)
 {
-    std::cout << name << " version " << VERSION << std::endl;
+    std::print("{} version {}\n", name, VERSION);
 }
