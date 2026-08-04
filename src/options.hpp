@@ -17,4 +17,8 @@ struct options
 {
     std::vector<fs::path> sources;
     fs::path target;
+
+    bool recursive;
+
+    bool symlink_files, symlink_dirs;
 };

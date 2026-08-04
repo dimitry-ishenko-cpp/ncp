@@ -33,12 +33,19 @@ try
 
     pgm::args args
     {
-        { "-h", "--help",           "Show this help screen and exit" },
-        { "-t", "--target", "DIR",  "Directory to copy/move into" },
-        { "-v", "--version",        "Show program version and exit" },
+        { "--follow-links", "when", "Specify when to follow symbolic links.\n"
+                                    "Can be one of 'never', 'always' or 'files'.\n"
+                                    "Default: 'never' if -r or --recursive was specified,\n"
+                                    "and 'always' otherwise."           },
+        { "-h", "--help",           "Show this help screen and exit."   },
+        { "-L",                     "Same as --follow-links=always."    },
+        { "-P",                     "Same as --follow-links=never."     },
+        { "-r", "--recursive",      "Copy directories recursively."     },
+        { "-t", "--target", "dir",  "Directory to copy/move into."      },
+        { "-v", "--version",        "Show program version and exit."    },
 
-        { "SOURCE", pgm::mul,       "Files/directories to copy or move" },
-        { "DESTINATION", pgm::opt,  "Destination file or directory" },
+        { "SOURCE", pgm::mul,       "Files/directories to copy or move."},
+        { "DESTINATION", pgm::opt,  "Destination file or directory."    },
     };
 
     std::exception_ptr ep;
@@ -80,6 +87,32 @@ try
             else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
         }
 
+        options.recursive = !!args["--recursive"];
+        // create symlinks in recursive mode by default
+        options.symlink_dirs = options.symlink_files = options.recursive;
+
+        auto&& follow_links = args["--follow-links"];
+        auto&& L = args["-L"];
+        auto&& P = args["-P"];
+
+        if ( (follow_links && P) || (follow_links && L) || (L && P) )
+            throw pgm::invalid_argument{"'--follow-links', '-L' and '-P' cannot be combined"};
+
+        if (follow_links)
+        {
+            auto when = follow_links.value();
+            if (when == "never" )
+                options.symlink_dirs = true,  options.symlink_files = true;
+            else if (when == "always")
+                options.symlink_dirs = false, options.symlink_files = false;
+            else if (when == "files" )
+                options.symlink_dirs = true,  options.symlink_files = false;
+            else throw pgm::invalid_argument{"bad '--follow-links' value"};
+        }
+        else if (L) options.symlink_dirs = false, options.symlink_files = false;
+        else if (P) options.symlink_dirs = true,  options.symlink_files = true;
+
+        ////////////////////
         asio::thread_pool pool{1};
         state state;
 
