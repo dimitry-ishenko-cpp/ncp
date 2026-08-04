@@ -13,7 +13,6 @@
 #include <asio.hpp>
 #include <exception>
 #include <filesystem>
-#include <future>
 #include <iostream>
 #include <print>
 #include <ranges>
@@ -90,10 +89,7 @@ try
             state.quit = true;
         }};
 
-        auto walk_task = std::async(std::launch::async,
-            walk_all, std::ref(state), std::cref(options), std::ref(pool)
-        );
-        walk_task.get();
+        walk_all(state, options, pool);
 
         pool.join();
     }
