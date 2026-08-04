@@ -27,12 +27,15 @@ inline void throw_filesystem_error(std::errc cond, const fs::path& path)
     throw fs::filesystem_error{"walk", path, std::make_error_code(cond)};
 }
 
-std::generator<fs::directory_entry> walk(const fs::path& dir)
+std::generator<fs::directory_entry> walk(state& state, const options& options, const fs::path& dir)
 {
     for (auto& entry : fs::directory_iterator(dir))
     {
         co_yield entry;
-        if (entry.is_directory()) co_yield std::ranges::elements_of( walk(entry.path()) );
+        if (entry.is_directory())
+        {
+            co_yield std::ranges::elements_of( walk(state, options, entry.path()) );
+        }
     }
 }
 
@@ -48,7 +51,7 @@ void walk_dir(state& state, const options& options, asio::thread_pool& pool, con
 {
     fs::create_directory(target);
 
-    for (auto&& entry : walk(source))
+    for (auto&& entry : walk(state, options, source))
     {
         if (state.quit.load(std::memory_order_relaxed)) break;
         auto target_path = target / fs::relative(entry.path(), source);
