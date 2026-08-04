@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "options.hpp"
 #include "pgm/args.hpp"
+#include "signal.hpp"
 #include "state.hpp"
 
 #include <asio.hpp>
@@ -14,6 +15,7 @@
 #include <filesystem>
 #include <future>
 #include <iostream>
+#include <print>
 #include <ranges>
 #include <string_view>
 
@@ -82,17 +84,11 @@ try
         asio::thread_pool pool{1};
         state state;
 
-        asio::io_context io;
-        asio::signal_set sigset{ io, SIGINT, SIGTERM };
-        sigset.async_wait([&](auto&& ec, int signal)
+        signal_set sigset{ {SIGINT, SIGTERM}, [&](int signal)
         {
-            if (!ec)
-            {
-                std::cerr << "Received signal " << signal << ", exiting..." << std::endl;
-                state.quit = true;
-            }
-        });
-        auto sigset_task = std::async(std::launch::async, [&]{ io.run(); });
+            std::print(stderr, "Received signal {}, exiting...\n", signal);
+            state.quit = true;
+        }};
 
         auto walk_task = std::async(std::launch::async,
             walk_all, std::ref(state), std::cref(options), std::ref(pool)
@@ -100,9 +96,6 @@ try
         walk_task.get();
 
         pool.join();
-
-        sigset.cancel();
-        sigset_task.get();
     }
 
     return 0;
