@@ -12,7 +12,7 @@
 namespace fs = std::filesystem;
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy(state& state, const fs::path& source, const fs::path& target)
+void copy_task(state& state, const fs::path& source, const fs::path& target)
 {
     // TODO
 }
