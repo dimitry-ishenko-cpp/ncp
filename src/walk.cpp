@@ -69,6 +69,8 @@ void walk_task(state& state, const options& options, asio::thread_pool& pool)
 
             if (fs::is_directory(source))
             {
+                if (!options.recursive) throw_filesystem_error(std::errc::is_a_directory, source);
+
                 auto trailing_slash = !source.has_filename();
                 auto target = trailing_slash ? options.target : options.target / source.filename();
 
@@ -90,7 +92,11 @@ void walk_task(state& state, const options& options, asio::thread_pool& pool)
 
         if (!fs::exists(source)) throw_filesystem_error(std::errc::no_such_file_or_directory, source);
 
-        if (fs::is_directory(source)) walk_dir(state, options, pool, source, target);
+        if (fs::is_directory(source))
+        {
+            if (!options.recursive) throw_filesystem_error(std::errc::is_a_directory, source);
+            walk_dir(state, options, pool, source, target);
+        }
         else post_copy_task(state, options, pool, source, target);
     }
 }
