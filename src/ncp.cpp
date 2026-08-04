@@ -23,7 +23,7 @@ namespace fs = std::filesystem;
 void show_usage(const pgm::args& args, std::string_view name);
 void show_version(std::string_view name);
 
-void walk_all(state&, const options&, asio::thread_pool&);
+void walk_task(state&, const options&, asio::thread_pool&);
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
@@ -89,7 +89,7 @@ try
             state.quit = true;
         }};
 
-        walk_all(state, options, pool);
+        walk_task(state, options, pool);
 
         pool.join();
     }

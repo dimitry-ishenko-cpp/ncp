@@ -56,7 +56,7 @@ void walk_dir(state& state, asio::thread_pool& pool, const fs::path& source, con
     }
 }
 
-void walk_all(state& state, const options& options, asio::thread_pool& pool)
+void walk_task(state& state, const options& options, asio::thread_pool& pool)
 {
     if (fs::is_directory(options.target))
     {
