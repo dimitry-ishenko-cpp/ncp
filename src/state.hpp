@@ -13,4 +13,7 @@
 struct state
 {
     std::atomic<bool> quit{ false };
+
+    std::atomic<long> files_total, files_copied;
+    std::atomic<long> bytes_total, bytes_copied;
 };
