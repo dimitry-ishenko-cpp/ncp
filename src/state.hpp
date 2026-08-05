@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <format>
 #include <mutex>
 #include <string>
 #include <system_error>
@@ -30,15 +31,17 @@ struct state
         std::lock_guard guard{mutex};
         errors.push_back(std::move(msg));
     }
-    void add_error(std::string msg, const fs::path& path)
+    void add_error(const std::string& msg, const fs::path& path)
     {
-        msg += ": '" + path.string() + "'";
-        add_error(std::move(msg));
+        add_error(std::format("{}: '{}'", msg, path.string()));
     }
-    void add_error(std::error_code ec) { add_error(ec.message()); }
+    void add_error(std::string msg, const fs::path& p1, const fs::path& p2)
+    {
+        add_error(std::format("{}: '{}' => '{}'", msg, p1.string(), p2.string()));
+    }
     void add_error(std::error_code ec, const fs::path& path) { add_error(ec.message(), path); }
+    void add_error(std::error_code ec, const fs::path& p1, const fs::path& p2) { add_error(ec.message(), p1, p2); }
 
-    void add_error(std::errc cond) { add_error(std::make_error_code(cond)); }
     void add_error(std::errc cond, const fs::path& path) { add_error(std::make_error_code(cond), path); }
 
     auto drain_errors()
