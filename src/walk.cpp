@@ -15,7 +15,7 @@
 
 namespace fs = std::filesystem;
 
-void copy_task(state& state, const options& options, const fs::path&, const fs::path&);
+void copy_file(state& state, const options& options, const fs::path&, const fs::path&);
 
 ////////////////////////////////////////////////////////////////////////////////
 inline void throw_filesystem_error(std::errc cond)
@@ -42,7 +42,7 @@ std::generator<fs::directory_entry> walk(state& state, const options& options, c
 void post_copy_task(state& state, const options& options, asio::thread_pool& pool, fs::path source, fs::path target)
 {
     asio::post(pool, [&state, &options, source = std::move(source), target = std::move(target)]{
-        copy_task(state, options, source, target);
+        copy_file(state, options, source, target);
     });
 }
 
