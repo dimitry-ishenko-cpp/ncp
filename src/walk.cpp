@@ -18,7 +18,7 @@ namespace fs = std::filesystem;
 void copy_file(const options&, state&, const fs::path&, const fs::path&);
 
 ////////////////////////////////////////////////////////////////////////////////
-std::generator<fs::directory_entry> walk(const options& options, state& state, fs::path dir)
+std::generator<fs::directory_entry> walk_dir(const options& options, state& state, fs::path dir)
 {
     std::error_code ec;
     fs::directory_iterator it{dir, ec}, end{};
@@ -30,58 +30,12 @@ std::generator<fs::directory_entry> walk(const options& options, state& state, f
         if (it->is_directory(ec))
         {
             if (!it->is_symlink(ec) || !options.symlink_other)
-                co_yield std::ranges::elements_of( walk(options, state, it->path()) );
+                co_yield std::ranges::elements_of( walk_dir(options, state, it->path()) );
         }
         // ignore ec above -- it will be dealt with by the yield recepient
 
         it.increment(ec);
         if (ec) { state.add_error(ec, dir); co_return; }
-    }
-}
-
-void walk_dir(const options& options, state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
-{
-    std::error_code ec;
-    fs::create_directory(target, ec);
-    if (ec) { state.add_error(ec, target); return; }
-
-    for (auto&& entry : walk(options, state, source))
-    {
-        if (state.quit.load(std::memory_order_relaxed)) break;
-
-        auto target_path = target / entry.path().lexically_relative(source);
-
-        auto is_link = entry.is_symlink(ec);
-        if (ec) { state.add_error(ec, entry.path()); continue; }
-
-        auto is_dir = entry.is_directory(ec);
-        if (ec && (!is_link || ec != std::errc::no_such_file_or_directory || !options.symlink_files))
-        {
-            state.add_error(ec, entry.path());
-            continue;
-        }
-
-        if (is_link && (is_dir ? options.symlink_other : options.symlink_files))
-        {
-            auto link_target = fs::read_symlink(entry.path(), ec);
-            if (!ec)
-            {
-                fs::create_symlink(link_target, target_path, ec);
-                if (ec) state.add_error(ec, target_path);
-            }
-            else state.add_error(ec, entry.path());
-        }
-        else if (is_dir)
-        {
-            fs::create_directory(target_path, ec);
-            if (ec) state.add_error(ec, target_path);
-        }
-        else
-        {
-            asio::post(pool, [&state, &options, source = entry.path(), target = target_path]{
-                copy_file(options, state, source, target);
-            });
-        }
     }
 }
 
@@ -117,8 +71,54 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
     }
     else if (is_dir)
     {
-        if (options.recursive) walk_dir(options, state, pool, source, target);
-        else state.add_error("Skipping directory", source);
+        if (!options.recursive)
+        {
+            state.add_error("Skipping directory", source);
+            return;
+        }
+
+        fs::create_directory(target, ec);
+        if (ec) { state.add_error(ec, target); return; }
+
+        for (auto&& child : walk_dir(options, state, source))
+        {
+            if (state.quit.load(std::memory_order_relaxed)) break;
+
+            auto child_target = target / child.path().lexically_relative(source);
+
+            auto is_link = child.is_symlink(ec);
+            if (ec) { state.add_error(ec, child.path()); continue; }
+
+            auto is_dir = child.is_directory(ec);
+            // allow dangling symlinks, when symlink_files == true
+            if (ec && (!is_link || ec != std::errc::no_such_file_or_directory || !options.symlink_files))
+            {
+                state.add_error(ec, child.path());
+                continue;
+            }
+
+            if (is_link && (is_dir ? options.symlink_other : options.symlink_files))
+            {
+                auto link_target = fs::read_symlink(child.path(), ec);
+                if (!ec)
+                {
+                    fs::create_symlink(link_target, child_target, ec);
+                    if (ec) state.add_error(ec, child_target);
+                }
+                else state.add_error(ec, child.path());
+            }
+            else if (is_dir)
+            {
+                fs::create_directory(child_target, ec);
+                if (ec) state.add_error(ec, child_target);
+            }
+            else
+            {
+                asio::post(pool, [&state, &options, source = child.path(), target = child_target]{
+                    copy_file(options, state, source, target);
+                });
+            }
+        }
     }
     else
     {
