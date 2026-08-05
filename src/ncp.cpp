@@ -13,6 +13,7 @@
 #include <csignal>
 #include <exception>
 #include <filesystem>
+#include <format>
 #include <print>
 #include <ranges>
 #include <string>
@@ -110,8 +111,8 @@ try
         state state;
 
         state_ptr = &state;
-        std::signal(SIGINT, &signal_handler);
-        std::signal(SIGTERM, &signal_handler);
+        std::signal(SIGINT, signal_handler);
+        std::signal(SIGTERM, signal_handler);
 
         walk_all(options, state, pool);
 
