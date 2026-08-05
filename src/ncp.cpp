@@ -86,7 +86,9 @@ try
                 // but if --target was specified that value belongs in SOURCES
                 if (destination) options.sources.push_back(destination.value());
             }
-            else throw pgm::invalid_argument{"target '" + options.target.string() + "' is not a directory"};
+            else throw fs::filesystem_error{"main",
+                options.target, std::make_error_code(std::errc::not_a_directory)
+            };
         }
         else
         {
@@ -126,8 +128,7 @@ try
 }
 catch (const fs::filesystem_error& e)
 {
-    if (e.path1().empty()) std::print("{}\n", e.code().message());
-    else std::print("{}: '{}'\n", e.code().message(), e.path1().string());
+    std::print("{}: '{}'\n", e.code().message(), e.path1().string());
     return 1;
 }
 catch (const std::exception& e)
