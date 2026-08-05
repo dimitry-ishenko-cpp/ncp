@@ -19,6 +19,5 @@ struct options
     fs::path target;
 
     bool recursive;
-
-    bool symlink_files, symlink_other;
+    bool keep_links;
 };

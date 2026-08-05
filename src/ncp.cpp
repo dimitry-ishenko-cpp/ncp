@@ -42,13 +42,9 @@ try
 
     pgm::args args
     {
-        { "--follow-links", "when", "Specify when to follow symbolic links.\n"
-                                    "Can be one of 'never', 'always' or 'files'.\n"
-                                    "Default: 'never' if -r or --recursive was specified,\n"
-                                    "and 'always' otherwise."           },
         { "-h", "--help",           "Show this help screen and exit."   },
-        { "-L",                     "Same as --follow-links=always."    },
-        { "-P",                     "Same as --follow-links=never."     },
+        { "-L", "--follow-links",   "Dereference symbolic links."       },
+        { "-P", "--keep-links",     "Preserve symbolic links."          },
         { "-r", "--recursive",      "Copy directories recursively."     },
         { "-t", "--target", "dir",  "Directory to copy/move into."      },
         { "-v", "--version",        "Show program version and exit."    },
@@ -97,29 +93,17 @@ try
         }
 
         options.recursive = !!args["--recursive"];
-        // create symlinks in recursive mode by default
-        options.symlink_files = options.symlink_other = options.recursive;
+        // keep symlinks in recursive mode by default
+        options.keep_links = options.recursive;
 
         auto&& follow_links = args["--follow-links"];
-        auto&& L = args["-L"];
-        auto&& P = args["-P"];
+        auto&& keep_links = args["--keep-links"];
 
-        if ( (follow_links && P) || (follow_links && L) || (L && P) )
-            throw pgm::invalid_argument{"'--follow-links', '-L' and '-P' cannot be combined"};
+        if (follow_links && keep_links)
+            throw pgm::invalid_argument{"'--follow-links' and '--keep-links' are mutually exclusive"};
 
-        if (follow_links)
-        {
-            auto when = follow_links.value();
-            if (when == "never" )
-                options.symlink_files = true, options.symlink_other = true;
-            else if (when == "always")
-                options.symlink_files = false, options.symlink_other = false;
-            else if (when == "files" )
-                options.symlink_files = false, options.symlink_files = true;
-            else throw pgm::invalid_argument{"bad '--follow-links' value"};
-        }
-        else if (L) options.symlink_files = false, options.symlink_other = false;
-        else if (P) options.symlink_files = true, options.symlink_other = true;
+        if (follow_links) options.keep_links = false;
+        else if (keep_links) options.keep_links = true;
 
         ////////////////////
         asio::thread_pool pool{1};
