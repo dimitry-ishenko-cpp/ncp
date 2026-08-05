@@ -32,6 +32,7 @@ std::generator<fs::directory_entry> walk(const options& options, state& state, f
             if (!it->is_symlink(ec) || !options.symlink_other)
                 co_yield std::ranges::elements_of( walk(options, state, it->path()) );
         }
+        // ignore ec above -- it will be dealt with by the yield recepient
 
         it.increment(ec);
         if (ec) { state.add_error(ec, dir); co_return; }
@@ -54,7 +55,11 @@ void walk_dir(const options& options, state& state, asio::thread_pool& pool, con
         if (ec) { state.add_error(ec, entry.path()); continue; }
 
         auto is_dir = entry.is_directory(ec);
-        if (ec) { state.add_error(ec, entry.path()); continue; }
+        if (ec && (!is_link || ec != std::errc::no_such_file_or_directory || !options.symlink_files))
+        {
+            state.add_error(ec, entry.path());
+            continue;
+        }
 
         if (is_link && (is_dir ? options.symlink_other : options.symlink_files))
         {
@@ -83,12 +88,22 @@ void walk_dir(const options& options, state& state, asio::thread_pool& pool, con
 void walk_one(const options& options, state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
 {
     std::error_code ec;
-
-    auto is_link = fs::is_symlink(source, ec);
+    auto status = fs::symlink_status(source, ec);
     if (ec) { state.add_error(ec, source); return; }
 
-    auto is_dir = fs::is_directory(source, ec);
-    if (ec) { state.add_error(ec, source); return; }
+    auto is_link = fs::is_symlink(status);
+    auto is_dir = fs::is_directory(status);
+
+    if (is_link)
+    {
+        is_dir = fs::is_directory(source, ec);
+        // allow dangling symlinks, when symlink_files == true
+        if (ec && (ec != std::errc::no_such_file_or_directory || !options.symlink_files))
+        {
+            state.add_error(ec, source);
+            return;
+        }
+    }
 
     if (is_link && (is_dir ? options.symlink_other : options.symlink_files))
     {
@@ -131,11 +146,14 @@ void walk_all(const options& options, state& state, asio::thread_pool& pool)
             walk_one(options, state, pool, source, target);
         }
     }
-    else if (options.sources.size() == 1)
+    else
     {
-        auto& source = options.sources.front();
-        auto& target = options.target;
-        walk_one(options, state, pool, source, target);
+        if (options.sources.size() == 1)
+        {
+            auto& source = options.sources.front();
+            auto& target = options.target;
+            walk_one(options, state, pool, source, target);
+        }
+        else state.add_error(std::errc::not_a_directory, options.target);
     }
-    else state.add_error(std::errc::not_a_directory, options.target);
 }
