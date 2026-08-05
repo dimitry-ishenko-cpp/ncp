@@ -20,5 +20,5 @@ struct options
 
     bool recursive;
 
-    bool symlink_files, symlink_dirs;
+    bool symlink_files, symlink_other;
 };

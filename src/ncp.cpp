@@ -89,7 +89,7 @@ try
 
         options.recursive = !!args["--recursive"];
         // create symlinks in recursive mode by default
-        options.symlink_dirs = options.symlink_files = options.recursive;
+        options.symlink_files = options.symlink_other = options.recursive;
 
         auto&& follow_links = args["--follow-links"];
         auto&& L = args["-L"];
@@ -102,15 +102,15 @@ try
         {
             auto when = follow_links.value();
             if (when == "never" )
-                options.symlink_dirs = true,  options.symlink_files = true;
+                options.symlink_files = true,  options.symlink_other = true;
             else if (when == "always")
-                options.symlink_dirs = false, options.symlink_files = false;
+                options.symlink_files = false, options.symlink_other = false;
             else if (when == "files" )
-                options.symlink_dirs = true,  options.symlink_files = false;
+                options.symlink_files = false, options.symlink_files = true;
             else throw pgm::invalid_argument{"bad '--follow-links' value"};
         }
-        else if (L) options.symlink_dirs = false, options.symlink_files = false;
-        else if (P) options.symlink_dirs = true,  options.symlink_files = true;
+        else if (L) options.symlink_files = false, options.symlink_other = false;
+        else if (P) options.symlink_files = true,  options.symlink_other = true;
 
         ////////////////////
         asio::thread_pool pool{1};
