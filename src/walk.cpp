@@ -15,10 +15,10 @@
 
 namespace fs = std::filesystem;
 
-void copy_file(state& state, const options& options, const fs::path&, const fs::path&);
+void copy_file(const options&, state&, const fs::path&, const fs::path&);
 
 ////////////////////////////////////////////////////////////////////////////////
-std::generator<fs::directory_entry> walk(state& state, const options& options, fs::path dir)
+std::generator<fs::directory_entry> walk(const options& options, state& state, fs::path dir)
 {
     std::error_code ec;
     fs::directory_iterator it{dir, ec}, end{};
@@ -30,7 +30,7 @@ std::generator<fs::directory_entry> walk(state& state, const options& options, f
         if (it->is_directory(ec))
         {
             if (!it->is_symlink(ec) || !options.symlink_other)
-                co_yield std::ranges::elements_of( walk(state, options, it->path()) );
+                co_yield std::ranges::elements_of( walk(options, state, it->path()) );
         }
 
         it.increment(ec);
@@ -38,13 +38,13 @@ std::generator<fs::directory_entry> walk(state& state, const options& options, f
     }
 }
 
-void walk_dir(state& state, const options& options, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
+void walk_dir(const options& options, state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
 {
     std::error_code ec;
     fs::create_directory(target, ec);
     if (ec) { state.add_error(ec, target); return; }
 
-    for (auto&& entry : walk(state, options, source))
+    for (auto&& entry : walk(options, state, source))
     {
         if (state.quit.load(std::memory_order_relaxed)) break;
 
@@ -74,13 +74,13 @@ void walk_dir(state& state, const options& options, asio::thread_pool& pool, con
         else
         {
             asio::post(pool, [&state, &options, source = entry.path(), target = target_path]{
-                copy_file(state, options, source, target);
+                copy_file(options, state, source, target);
             });
         }
     }
 }
 
-void walk_one(state& state, const options& options, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
+void walk_one(const options& options, state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
 {
     std::error_code ec;
 
@@ -102,13 +102,18 @@ void walk_one(state& state, const options& options, asio::thread_pool& pool, con
     }
     else if (is_dir)
     {
-        if (options.recursive) walk_dir(state, options, pool, source, target);
+        if (options.recursive) walk_dir(options, state, pool, source, target);
         else state.add_error("Skipping directory", source);
     }
-    else asio::post(pool, [&state, &options, source, target]{ copy_file(state, options, source, target); });
+    else
+    {
+        asio::post(pool, [&state, &options, source, target]{
+            copy_file(options, state, source, target);
+        });
+    }
 }
 
-void walk_all(state& state, const options& options, asio::thread_pool& pool)
+void walk_all(const options& options, state& state, asio::thread_pool& pool)
 {
     std::error_code ec;
     auto is_dir = fs::is_directory(options.target, ec);
@@ -123,14 +128,14 @@ void walk_all(state& state, const options& options, asio::thread_pool& pool)
             auto trailing_slash = !source.has_filename();
             auto target = trailing_slash ? options.target : options.target / source.filename();
 
-            walk_one(state, options, pool, source, target);
+            walk_one(options, state, pool, source, target);
         }
     }
     else if (options.sources.size() == 1)
     {
         auto& source = options.sources.front();
         auto& target = options.target;
-        walk_one(state, options, pool, source, target);
+        walk_one(options, state, pool, source, target);
     }
     else state.add_error(std::errc::not_a_directory, options.target);
 }

@@ -13,7 +13,7 @@
 namespace fs = std::filesystem;
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(state& state, const options& options, const fs::path& source, const fs::path& target)
+void copy_file(const options& options, state& state, const fs::path& source, const fs::path& target)
 {
     // TODO
 }
