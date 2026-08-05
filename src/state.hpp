@@ -30,6 +30,7 @@ struct state
     {
         std::lock_guard guard{mutex};
         errors.push_back(std::move(msg));
+        ++error_count;
     }
     void add_error(const std::string& msg, const fs::path& path)
     {
@@ -50,7 +51,14 @@ struct state
         return std::exchange(errors, {});
     }
 
+    auto get_error_count()
+    {
+        std::lock_guard guard{mutex};
+        return error_count;
+    }
+
 private:
     std::mutex mutex;
     std::vector<std::string> errors;
+    long error_count = 0;
 };
