@@ -15,14 +15,12 @@
 #include <filesystem>
 #include <print>
 #include <ranges>
-#include <string_view>
+#include <string>
 
 namespace fs = std::filesystem;
 
-void show_usage(const pgm::args& args, std::string_view name);
-void show_version(std::string_view name);
-
-void walk_all(const options&, state&, asio::thread_pool&);
+void show_usage(const pgm::args& args, const std::string& name);
+void show_version(const std::string& name);
 
 state* state_ptr = nullptr;
 extern "C" void signal_handler(int signal)
@@ -33,6 +31,8 @@ extern "C" void signal_handler(int signal)
         state_ptr->quit = true;
     }
 }
+
+void walk_all(const options&, state&, asio::thread_pool&);
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
@@ -133,7 +133,7 @@ catch (const std::exception& e)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-void show_usage(const pgm::args& args, std::string_view name)
+void show_usage(const pgm::args& args, const std::string& name)
 {
     auto preamble = R"(
 ncp – new and improved, now asbestos-free copy utility.)";
@@ -141,7 +141,7 @@ ncp – new and improved, now asbestos-free copy utility.)";
     std::print("{}\n", args.usage(name, preamble));
 }
 
-void show_version(std::string_view name)
+void show_version(const std::string& name)
 {
     std::print("{} version {}\n", name, VERSION);
 }
