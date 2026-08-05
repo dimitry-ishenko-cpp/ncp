@@ -18,88 +18,119 @@ namespace fs = std::filesystem;
 void copy_file(state& state, const options& options, const fs::path&, const fs::path&);
 
 ////////////////////////////////////////////////////////////////////////////////
-inline void throw_filesystem_error(std::errc cond)
+std::generator<fs::directory_entry> walk(state& state, const options& options, fs::path dir)
 {
-    throw fs::filesystem_error{"walk", std::make_error_code(cond)};
-}
-inline void throw_filesystem_error(std::errc cond, const fs::path& path)
-{
-    throw fs::filesystem_error{"walk", path, std::make_error_code(cond)};
-}
+    std::error_code ec;
+    fs::directory_iterator it{dir, ec}, end{};
+    if (ec) { state.add_error(ec, dir); co_return; }
 
-std::generator<fs::directory_entry> walk(state& state, const options& options, const fs::path& dir)
-{
-    for (auto& entry : fs::directory_iterator(dir))
+    while (it != end)
     {
-        co_yield entry;
-        if (entry.is_directory())
+        co_yield *it;
+        if (it->is_directory(ec))
         {
-            co_yield std::ranges::elements_of( walk(state, options, entry.path()) );
+            if (!it->is_symlink(ec) || !options.symlink_other)
+                co_yield std::ranges::elements_of( walk(state, options, it->path()) );
         }
+
+        it.increment(ec);
+        if (ec) { state.add_error(ec, dir); co_return; }
     }
 }
 
-void post_copy_task(state& state, const options& options, asio::thread_pool& pool, fs::path source, fs::path target)
-{
-    asio::post(pool, [&state, &options, source = std::move(source), target = std::move(target)]{
-        copy_file(state, options, source, target);
-    });
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void walk_dir(state& state, const options& options, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
 {
-    fs::create_directory(target);
+    std::error_code ec;
+    fs::create_directory(target, ec);
+    if (ec) { state.add_error(ec, target); return; }
 
     for (auto&& entry : walk(state, options, source))
     {
         if (state.quit.load(std::memory_order_relaxed)) break;
-        auto target_path = target / fs::relative(entry.path(), source);
 
-        if (entry.is_directory()) fs::create_directory(target_path);
-        else post_copy_task(state, options, pool, entry.path(), target_path);
+        auto target_path = target / entry.path().lexically_relative(source);
+
+        auto is_link = entry.is_symlink(ec);
+        if (ec) { state.add_error(ec, entry.path()); continue; }
+
+        auto is_dir = entry.is_directory(ec);
+        if (ec) { state.add_error(ec, entry.path()); continue; }
+
+        if (is_link && (is_dir ? options.symlink_other : options.symlink_files))
+        {
+            auto link_target = fs::read_symlink(entry.path(), ec);
+            if (!ec)
+            {
+                fs::create_symlink(link_target, target_path, ec);
+                if (ec) state.add_error(ec, target_path);
+            }
+            else state.add_error(ec, entry.path());
+        }
+        else if (is_dir)
+        {
+            fs::create_directory(target_path, ec);
+            if (ec) state.add_error(ec, target_path);
+        }
+        else
+        {
+            asio::post(pool, [&state, &options, source = entry.path(), target = target_path]{
+                copy_file(state, options, source, target);
+            });
+        }
     }
 }
 
-void walk_task(state& state, const options& options, asio::thread_pool& pool)
+void walk_one(state& state, const options& options, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
 {
-    if (fs::is_directory(options.target))
+    std::error_code ec;
+
+    auto is_link = fs::is_symlink(source, ec);
+    if (ec) { state.add_error(ec, source); return; }
+
+    auto is_dir = fs::is_directory(source, ec);
+    if (ec) { state.add_error(ec, source); return; }
+
+    if (is_link && (is_dir ? options.symlink_other : options.symlink_files))
+    {
+        auto link_target = fs::read_symlink(source, ec);
+        if (!ec)
+        {
+            fs::create_symlink(link_target, target, ec);
+            if (ec) state.add_error(ec, target);
+        }
+        else state.add_error(ec, source);
+    }
+    else if (is_dir)
+    {
+        if (options.recursive) walk_dir(state, options, pool, source, target);
+        else state.add_error("Skipping directory", source);
+    }
+    else asio::post(pool, [&state, &options, source, target]{ copy_file(state, options, source, target); });
+}
+
+void walk_all(state& state, const options& options, asio::thread_pool& pool)
+{
+    std::error_code ec;
+    auto is_dir = fs::is_directory(options.target, ec);
+    if (ec) { state.add_error(ec, options.target); return; }
+
+    if (is_dir)
     {
         for (auto&& source : options.sources)
         {
             if (state.quit.load(std::memory_order_relaxed)) break;
-            if (!fs::exists(source)) throw_filesystem_error(std::errc::no_such_file_or_directory, source);
 
-            if (fs::is_directory(source))
-            {
-                if (!options.recursive) throw_filesystem_error(std::errc::is_a_directory, source);
+            auto trailing_slash = !source.has_filename();
+            auto target = trailing_slash ? options.target : options.target / source.filename();
 
-                auto trailing_slash = !source.has_filename();
-                auto target = trailing_slash ? options.target : options.target / source.filename();
-
-                walk_dir(state, options, pool, source, target);
-            }
-            else
-            {
-                auto target = options.target / source.filename();
-                post_copy_task(state, options, pool, source, target);
-            }
+            walk_one(state, options, pool, source, target);
         }
     }
-    else
+    else if (options.sources.size() == 1)
     {
-        if (options.sources.size() > 1) throw_filesystem_error(std::errc::not_a_directory, options.target);
-
-        auto&& source = options.sources.front();
-        auto&& target = options.target;
-
-        if (!fs::exists(source)) throw_filesystem_error(std::errc::no_such_file_or_directory, source);
-
-        if (fs::is_directory(source))
-        {
-            if (!options.recursive) throw_filesystem_error(std::errc::is_a_directory, source);
-            walk_dir(state, options, pool, source, target);
-        }
-        else post_copy_task(state, options, pool, source, target);
+        auto& source = options.sources.front();
+        auto& target = options.target;
+        walk_one(state, options, pool, source, target);
     }
+    else state.add_error(std::errc::not_a_directory, options.target);
 }
