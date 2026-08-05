@@ -7,10 +7,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "options.hpp"
 #include "pgm/args.hpp"
-#include "signal.hpp"
 #include "state.hpp"
 
 #include <asio.hpp>
+#include <csignal>
 #include <exception>
 #include <filesystem>
 #include <print>
@@ -23,6 +23,16 @@ void show_usage(const pgm::args& args, std::string_view name);
 void show_version(std::string_view name);
 
 void walk_all(const options&, state&, asio::thread_pool&);
+
+state* state_ptr = nullptr;
+extern "C" void signal_handler(int signal)
+{
+    if (state_ptr)
+    {
+        state_ptr->add_error(std::format("Received signal {}, exiting...", signal));
+        state_ptr->quit = true;
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
@@ -115,11 +125,9 @@ try
         asio::thread_pool pool{1};
         state state;
 
-        signal_set sigset{ {SIGINT, SIGTERM}, [&](int signal)
-        {
-            std::print(stderr, "Received signal {}, exiting...\n", signal);
-            state.quit = true;
-        }};
+        state_ptr = &state;
+        std::signal(SIGINT, &signal_handler);
+        std::signal(SIGTERM, &signal_handler);
 
         walk_all(options, state, pool);
 
