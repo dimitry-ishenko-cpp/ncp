@@ -39,6 +39,7 @@ void walk_all(const options&, state&, asio::thread_pool&);
 int main(int argc, char* argv[])
 try
 {
+    int exit_code = 0;
     auto name = fs::path{argv[0]}.filename().string();
 
     pgm::args args
@@ -117,9 +118,11 @@ try
         walk_all(options, state, pool);
 
         pool.join();
+
+        exit_code = state.get_error_count() ? 2 : 0;
     }
 
-    return 0;
+    return exit_code;
 }
 catch (const fs::filesystem_error& e)
 {
