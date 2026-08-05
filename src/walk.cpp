@@ -18,6 +18,20 @@ namespace fs = std::filesystem;
 void copy_file(const options&, state&, const fs::path&, const fs::path&);
 
 ////////////////////////////////////////////////////////////////////////////////
+void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
+{
+    std::error_code ec;
+    auto size = fs::file_size(source, ec);
+    if (ec) { state.add_error(ec, source); return; }
+
+    state.files_total.fetch_add(1, std::memory_order_relaxed);
+    state.bytes_total.fetch_add(size, std::memory_order_relaxed);
+
+    asio::post(pool, [&options, &state, source, target]{
+        copy_file(options, state, source, target);
+    });
+}
+
 std::generator<fs::directory_entry> walk_dir(const options& options, state& state, fs::path dir)
 {
     std::error_code ec;
@@ -105,22 +119,11 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
                         fs::create_directory(child_target, ec);
                         if (ec) state.add_error(ec, child_target);
                     }
-                    else
-                    {
-                        asio::post(pool, [&state, &options, source = child.path(), target = child_target]{
-                            copy_file(options, state, source, target);
-                        });
-                    }
+                    else post_copy_file(options, state, pool, child.path(), child_target);
                 }
             }
         }
-        else
-        {
-            asio::post(pool, [&state, &options, source, target]{
-                copy_file(options, state, source, target);
-            });
-        }
-
+        else post_copy_file(options, state, pool, source, target);
     }
 
 }
