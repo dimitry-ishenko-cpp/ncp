@@ -111,7 +111,7 @@ try
         {
             auto when = follow_links.value();
             if (when == "never" )
-                options.symlink_files = true,  options.symlink_other = true;
+                options.symlink_files = true, options.symlink_other = true;
             else if (when == "always")
                 options.symlink_files = false, options.symlink_other = false;
             else if (when == "files" )
@@ -119,7 +119,7 @@ try
             else throw pgm::invalid_argument{"bad '--follow-links' value"};
         }
         else if (L) options.symlink_files = false, options.symlink_other = false;
-        else if (P) options.symlink_files = true,  options.symlink_other = true;
+        else if (P) options.symlink_files = true, options.symlink_other = true;
 
         ////////////////////
         asio::thread_pool pool{1};
