@@ -41,6 +41,8 @@ std::generator<fs::directory_entry> walk_dir(const options& options, state& stat
     while (it != end)
     {
         co_yield *it;
+
+        std::error_code ec;
         if (it->is_directory(ec))
         {
             if (!it->is_symlink(ec) || !options.keep_links)
@@ -96,6 +98,7 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
 
                 auto child_target = target / child.path().lexically_relative(source);
 
+                std::error_code ec;
                 auto is_link = child.is_symlink(ec);
                 if (ec) { state.add_error(ec, child.path()); continue; }
 
