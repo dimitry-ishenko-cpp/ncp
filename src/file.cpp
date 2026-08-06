@@ -5,26 +5,39 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
-#include "options.hpp"
-#include "state.hpp"
-
-#include <filesystem>
-#include <system_error>
+#include "file.hpp"
 
 namespace fs = std::filesystem;
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(const options& options, state& state, const fs::path& source, const fs::path& target)
+std::expected<void, error> copy_file(const path& from, const path& to, const options& options)
 {
-    if (state.quit.load(std::memory_order_relaxed)) return;
-
     std::error_code ec;
-    fs::copy(source, target, fs::copy_options::overwrite_existing, ec);
-    if (ec) { state.add_error(ec, source, target); return; }
+    fs::copy(from, to, ec);
+    if (ec) return std::unexpected(error{ec, from, to});
+    else return {};
+}
 
-    auto size = fs::file_size(source, ec);
-    if (ec) { state.add_error(ec, source); return; }
+std::expected<void, error> create_directory(const path& p, const options& options)
+{
+    std::error_code ec;
+    fs::create_directory(p, ec);
+    if (ec) return std::unexpected(error{ec, p});
+    else return {};
+}
 
-    state.files_copied.fetch_add(1, std::memory_order_relaxed);
-    state.bytes_copied.fetch_add(size, std::memory_order_relaxed);
+std::expected<void, error> create_symlink(const path& to, const path& new_link, const options&)
+{
+    std::error_code ec;
+    fs::create_symlink(to, new_link, ec);
+    if (ec) return std::unexpected(error{ec, new_link});
+    else return {};
+}
+
+std::expected<std::uintmax_t, error> file_size(const path& p)
+{
+    std::error_code ec;
+    auto size = fs::file_size(p, ec);
+    if (ec) return std::unexpected(error{ec, p});
+    else return size;
 }

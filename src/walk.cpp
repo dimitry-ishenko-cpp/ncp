@@ -5,6 +5,7 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
+#include "file.hpp"
 #include "options.hpp"
 #include "state.hpp"
 
@@ -15,24 +16,31 @@
 
 namespace fs = std::filesystem;
 
-void copy_file(const options&, state&, const fs::path&, const fs::path&);
-
 ////////////////////////////////////////////////////////////////////////////////
-void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
+void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const path& source, const path& target)
 {
-    std::error_code ec;
-    auto size = fs::file_size(source, ec);
-    if (ec) { state.add_error(ec, source); return; }
+    auto size = ::file_size(source);
+    if (!size.has_value()) { state.add_error(size.error()); return; }
 
     state.files_total.fetch_add(1, std::memory_order_relaxed);
-    state.bytes_total.fetch_add(size, std::memory_order_relaxed);
+    state.bytes_total.fetch_add(size.value(), std::memory_order_relaxed);
 
-    asio::post(pool, [&options, &state, source, target]{
-        copy_file(options, state, source, target);
+    asio::post(pool, [&options, &state, source, target]
+    {
+        if (state.quit.load(std::memory_order_relaxed)) return;
+
+        auto res = copy_file(source, target, options);
+        if (!res) { state.add_error(res.error()); return; }
+
+        auto size = ::file_size(source);
+        if (!size.has_value()) { state.add_error(size.error()); return; }
+
+        state.files_copied.fetch_add(1, std::memory_order_relaxed);
+        state.bytes_copied.fetch_add(size.value(), std::memory_order_relaxed);
     });
 }
 
-std::generator<fs::directory_entry> walk_dir(const options& options, state& state, fs::path dir)
+std::generator<fs::directory_entry> walk_dir(const options& options, state& state, path dir)
 {
     std::error_code ec;
     fs::directory_iterator it{dir, ec}, end{};
@@ -55,7 +63,7 @@ std::generator<fs::directory_entry> walk_dir(const options& options, state& stat
     }
 }
 
-void walk_one(const options& options, state& state, asio::thread_pool& pool, const fs::path& source, const fs::path& target)
+void walk_one(const options& options, state& state, asio::thread_pool& pool, const path& source, const path& target)
 {
     std::error_code ec;
     auto status = fs::symlink_status(source, ec);
