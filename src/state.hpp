@@ -7,16 +7,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
+#include "file.hpp"
+
 #include <atomic>
-#include <filesystem>
 #include <format>
 #include <mutex>
 #include <string>
 #include <system_error>
 #include <utility> // std::exchange
 #include <vector>
-
-namespace fs = std::filesystem;
 
 ////////////////////////////////////////////////////////////////////////////////
 struct state
@@ -32,18 +31,26 @@ struct state
         errors.push_back(std::move(msg));
         ++error_count;
     }
-    void add_error(const std::string& msg, const fs::path& path)
+    void add_error(const error& e)
+    {
+        if (!e.path2.empty())
+            add_error(std::format("{}: '{}' => '{}'", e.code.message(), e.path1.string(), e.path2.string()));
+        else if (!e.path1.empty())
+            add_error(std::format("{}: '{}'", e.code.message(), e.path1.string()));
+        else add_error(e.code.message());
+    }
+    void add_error(const std::string& msg, const path& path)
     {
         add_error(std::format("{}: '{}'", msg, path.string()));
     }
-    void add_error(std::string msg, const fs::path& p1, const fs::path& p2)
+    void add_error(std::string msg, const path& p1, const path& p2)
     {
         add_error(std::format("{}: '{}' => '{}'", msg, p1.string(), p2.string()));
     }
-    void add_error(std::error_code ec, const fs::path& path) { add_error(ec.message(), path); }
-    void add_error(std::error_code ec, const fs::path& p1, const fs::path& p2) { add_error(ec.message(), p1, p2); }
+    void add_error(std::error_code ec, const path& path) { add_error(ec.message(), path); }
+    void add_error(std::error_code ec, const path& p1, const path& p2) { add_error(ec.message(), p1, p2); }
 
-    void add_error(std::errc cond, const fs::path& path) { add_error(std::make_error_code(cond), path); }
+    void add_error(std::errc cond, const path& path) { add_error(std::make_error_code(cond), path); }
 
     auto drain_errors()
     {
