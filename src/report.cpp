@@ -23,7 +23,7 @@ auto human(long bytes)
     auto dbl_bytes = static_cast<double>(bytes);
     for (; dbl_bytes >= 1024.0 && n < units.size() - 1; ++n) dbl_bytes /= 1024.0;
 
-    return std::format("{:.{}f} {}", dbl_bytes, n ? 2 : 0, units[n]);
+    return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
 }
 
 void report_one(state& state, bool overwrite = true)
@@ -38,17 +38,29 @@ void report_one(state& state, bool overwrite = true)
     auto bytes_total  = state.bytes_total.load(std::memory_order_relaxed);
     auto bytes_copied = state.bytes_copied.load(std::memory_order_relaxed);
 
-    std::print("Copied {}/{} files, {}/{} bytes\n", files_copied, files_total, human(bytes_copied), human(bytes_total));
+    auto percent_copied = bytes_total ? (100 * bytes_copied / bytes_total) : 0;
+
+    constexpr auto bar_width = 40;
+    auto bar_fill = percent_copied * bar_width / 100;
+    std::string bar;
+    for (auto n = 0; n < bar_fill; ++n) bar += "█";
+    for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
+
+    std::print(" {:>3}% {} {}/{} ⬤ {}/{}\n",
+        percent_copied, bar, files_copied, files_total, human(bytes_copied), human(bytes_total)
+    );
     std::fflush(stdout);
 }
 
 void report(state& state)
 {
-    report_one(state, false);
+    bool overwrite = false;
     do
     {
         std::this_thread::sleep_for(100ms);
-        report_one(state);
+
+        report_one(state, overwrite);
+        overwrite = true;
     }
     while (!state.quit.load(std::memory_order_relaxed));
 }
