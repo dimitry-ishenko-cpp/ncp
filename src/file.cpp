@@ -34,6 +34,14 @@ std::expected<void, error> create_symlink(const path& to, const path& new_link, 
     else return {};
 }
 
+std::expected<directory_iterator, error> directory_iterator_for(const path& p)
+{
+    std::error_code ec;
+    fs::directory_iterator di{p, ec};
+    if (ec) return std::unexpected(error{ec, p});
+    else return di;
+}
+
 std::expected<std::uintmax_t, error> file_size(const path& p)
 {
     std::error_code ec;
@@ -42,11 +50,27 @@ std::expected<std::uintmax_t, error> file_size(const path& p)
     else return size;
 }
 
+std::expected<void, error> increment(directory_iterator& i)
+{
+    std::error_code ec;
+    i.increment(ec);
+    if (ec) return std::unexpected(error{ec, i->path()});
+    else return {};
+}
+
 std::expected<bool, error> is_directory(const directory_entry& e)
 {
     std::error_code ec;
     auto is_dir = e.is_directory(ec);
     if (ec) return std::unexpected(error{ec, e.path()});
+    else return is_dir;
+}
+
+std::expected<bool, error> is_directory(const directory_iterator& i)
+{
+    std::error_code ec;
+    auto is_dir = i->is_directory(ec);
+    if (ec) return std::unexpected(error{ec, i->path()});
     else return is_dir;
 }
 
@@ -63,6 +87,14 @@ std::expected<bool, error> is_symlink(const directory_entry& e)
     std::error_code ec;
     auto is_link = e.is_symlink(ec);
     if (ec) return std::unexpected(error{ec, e.path()});
+    else return is_link;
+}
+
+std::expected<bool, error> is_symlink(const directory_iterator& i)
+{
+    std::error_code ec;
+    auto is_link = i->is_symlink(ec);
+    if (ec) return std::unexpected(error{ec, i->path()});
     else return is_link;
 }
 

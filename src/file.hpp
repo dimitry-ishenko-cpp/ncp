@@ -15,6 +15,7 @@
 #include <system_error>
 
 using std::filesystem::directory_entry;
+using std::filesystem::directory_iterator;
 using std::filesystem::file_status;
 using std::filesystem::path;
 
@@ -29,13 +30,18 @@ std::expected<void, error> copy_file(const path&, const path&, const options&);
 std::expected<void, error> create_directory(const path&, const options&);
 std::expected<void, error> create_symlink(const path&, const path&, const options&);
 
+std::expected<directory_iterator, error> directory_iterator_for(const path&);
+
 std::expected<std::uintmax_t, error> file_size(const path&);
+std::expected<void, error> increment(directory_iterator&);
 
 std::expected<bool, error> is_directory(const directory_entry&);
+std::expected<bool, error> is_directory(const directory_iterator&);
 inline auto is_directory(file_status s) { return std::filesystem::is_directory(s); }
 std::expected<bool, error> is_directory(const path&);
 
 std::expected<bool, error> is_symlink(const directory_entry&);
+std::expected<bool, error> is_symlink(const directory_iterator&);
 inline auto is_symlink(file_status s) { return std::filesystem::is_symlink(s); }
 std::expected<bool, error> is_symlink(const path&);
 
