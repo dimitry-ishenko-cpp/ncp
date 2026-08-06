@@ -25,6 +25,6 @@ void copy_file(const options& options, state& state, const fs::path& source, con
     auto size = fs::file_size(source, ec);
     if (ec) { state.add_error(ec, source); return; }
 
-    state.files_total.fetch_add(1, std::memory_order_relaxed);
-    state.bytes_total.fetch_add(size, std::memory_order_relaxed);
+    state.files_copied.fetch_add(1, std::memory_order_relaxed);
+    state.bytes_copied.fetch_add(size, std::memory_order_relaxed);
 }
