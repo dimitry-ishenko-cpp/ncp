@@ -46,7 +46,7 @@ void report_one(state& state, bool overwrite = true)
     for (auto n = 0; n < bar_fill; ++n) bar += "█";
     for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
 
-    std::print(" {:>3}% {} {}/{} ⬤ {}/{}\n",
+    std::print(" {:>3}% {} {}/{} ● {}/{}\n",
         percent_copied, bar, files_copied, files_total, human(bytes_copied), human(bytes_total)
     );
     std::fflush(stdout);
