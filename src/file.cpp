@@ -10,7 +10,7 @@
 namespace fs = std::filesystem;
 
 ////////////////////////////////////////////////////////////////////////////////
-std::expected<void, error> copy_file(const path& from, const path& to, const options& options)
+std::expected<void, error> copy_file(const path& from, const path& to, const options&)
 {
     std::error_code ec;
     fs::copy(from, to, ec);
@@ -18,7 +18,7 @@ std::expected<void, error> copy_file(const path& from, const path& to, const opt
     else return {};
 }
 
-std::expected<void, error> create_directory(const path& p, const options& options)
+std::expected<void, error> create_directory(const path& p, const options&)
 {
     std::error_code ec;
     fs::create_directory(p, ec);
@@ -34,6 +34,7 @@ std::expected<void, error> create_symlink(const path& to, const path& new_link, 
     else return {};
 }
 
+////////////////////////////////////////////////////////////////////////////////
 std::expected<directory_iterator, error> directory_iterator_for(const path& p)
 {
     std::error_code ec;
