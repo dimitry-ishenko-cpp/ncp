@@ -33,6 +33,9 @@ extern "C" void signal_handler(int signal)
     }
 }
 
+void report_one(state&, bool overwrite = true);
+void report(state&);
+
 void walk_all(const options&, state&, asio::thread_pool&);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -117,10 +120,16 @@ try
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
+        auto report_task = std::async(std::launch::async, report, std::ref(state));
         walk_all(options, state, pool);
 
         pool.join();
 
+        state.quit = true;
+        report_task.wait();
+
+        // final report
+        report_one(state);
         exit_code = state.get_error_count() ? 2 : 0;
     }
 
