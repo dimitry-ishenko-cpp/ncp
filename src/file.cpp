@@ -41,3 +41,51 @@ std::expected<std::uintmax_t, error> file_size(const path& p)
     if (ec) return std::unexpected(error{ec, p});
     else return size;
 }
+
+std::expected<bool, error> is_directory(const directory_entry& e)
+{
+    std::error_code ec;
+    auto is_dir = e.is_directory(ec);
+    if (ec) return std::unexpected(error{ec, e.path()});
+    else return is_dir;
+}
+
+std::expected<bool, error> is_directory(const path& p)
+{
+    std::error_code ec;
+    auto is_dir = fs::is_directory(p, ec);
+    if (ec) return std::unexpected(error{ec, p});
+    else return is_dir;
+}
+
+std::expected<bool, error> is_symlink(const directory_entry& e)
+{
+    std::error_code ec;
+    auto is_link = e.is_symlink(ec);
+    if (ec) return std::unexpected(error{ec, e.path()});
+    else return is_link;
+}
+
+std::expected<bool, error> is_symlink(const path& p)
+{
+    std::error_code ec;
+    auto is_dir = fs::is_symlink(p, ec);
+    if (ec) return std::unexpected(error{ec, p});
+    else return is_dir;
+}
+
+std::expected<path, error> read_symlink(const path& p)
+{
+    std::error_code ec;
+    auto target = fs::read_symlink(p, ec);
+    if (ec) return std::unexpected(error{ec, p});
+    else return target;
+}
+
+std::expected<file_status, error> symlink_status(const path& p)
+{
+    std::error_code ec;
+    auto status = fs::symlink_status(p, ec);
+    if (ec) return std::unexpected(error{ec, p});
+    else return status;
+}
