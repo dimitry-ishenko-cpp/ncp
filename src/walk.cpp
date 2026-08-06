@@ -42,24 +42,23 @@ void post_copy_file(const options& options, state& state, asio::thread_pool& poo
 
 std::generator<fs::directory_entry> walk_dir(const options& options, state& state, path dir)
 {
-    std::error_code ec;
-    fs::directory_iterator it{dir, ec}, end{};
-    if (ec) { state.add_error(ec, dir); co_return; }
+    auto res = directory_iterator_for(dir);
+    if (!res) { state.add_error(res.error()); co_return; }
 
-    while (it != end)
+    directory_iterator i = res.value(), end{};
+    while (i != end)
     {
-        co_yield *it;
+        co_yield *i;
 
-        std::error_code ec;
-        if (it->is_directory(ec))
+        if (is_directory(i).value_or(false))
         {
-            if (!it->is_symlink(ec) || !options.keep_links)
-                co_yield std::ranges::elements_of( walk_dir(options, state, it->path()) );
+            if (!is_symlink(i).value_or(false) || !options.keep_links)
+                co_yield std::ranges::elements_of( walk_dir(options, state, i->path()) );
         }
-        // ignore ec above -- it will be dealt with by the yield recepient
+        // ignore error above -- it will be dealt with by the yield recepient
 
-        it.increment(ec);
-        if (ec) { state.add_error(ec, dir); co_return; }
+        auto res = increment(i);
+        if (!res) { state.add_error(res.error()); co_return; }
     }
 }
 
