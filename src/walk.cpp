@@ -6,6 +6,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 #include "file.hpp"
+#include "io/file_info.hpp"
 #include "options.hpp"
 #include "state.hpp"
 
@@ -62,12 +63,12 @@ std::generator<fs::directory_entry> walk_dir(const options& options, state& stat
     }
 }
 
-void walk_one(const options& options, state& state, asio::thread_pool& pool, const path& source, const path& target)
+void walk_one(const options& options, state& state, asio::thread_pool& pool, const io::path& source, const io::path& target)
 {
-    auto stat = ::symlink_status(source);
-    if (!stat.has_value()) { state.add_error(stat.error()); return; }
+    auto info = io::file_info::get(source);
+    if (!info) { state.add_error(info.error(), source); return; }
 
-    auto is_link = ::is_symlink(stat.value());
+    auto is_link = info->is_symlink();
     if (is_link && options.keep_links)
     {
         auto res = ::read_symlink(source)
@@ -78,12 +79,12 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
     }
     else
     {
-        auto is_dir = ::is_directory(*stat);
+        auto is_dir = info->is_directory();
         if (is_link)
         {
-            auto res = ::is_directory(source);
-            if (!res) { state.add_error(res.error()); return; }
-            is_dir = res.value();
+            info = info->target();
+            if (!info) { state.add_error(info.error(), source); return; }
+            is_dir = info->is_directory();
         }
 
         if (is_dir)
@@ -134,10 +135,10 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
 
 void walk_all(const options& options, state& state, asio::thread_pool& pool)
 {
-    auto is_dir = ::is_directory(options.target);
-    if (!is_dir.has_value()) { state.add_error(is_dir.error()); return; }
+    auto info = io::file_info::get(options.target);
+    if (!info) { state.add_error(info.error(), options.target); return; }
 
-    if (is_dir.value())
+    if (info->is_directory())
     {
         for (auto&& source : options.sources)
         {
