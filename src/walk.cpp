@@ -6,6 +6,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 #include "file.hpp"
+#include "io/file.hpp"
 #include "io/file_info.hpp"
 #include "options.hpp"
 #include "state.hpp"
@@ -71,11 +72,12 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
     auto is_link = esrc->is_symlink();
     if (is_link && options.keep_links)
     {
-        auto res = ::read_symlink(source)
-            .and_then([&](auto&& link_target) {
-                return create_symlink(link_target, target, options);
-            });
-        if (!res) state.add_error(res.error());
+        if (auto elnk = esrc->target_path())
+        {
+            auto eval = io::create_symlink(elnk.value(), target);
+            if (!eval) state.add_error(eval.error(), target);
+        }
+        else state.add_error(elnk.error(), esrc->path());
     }
     else
     {
