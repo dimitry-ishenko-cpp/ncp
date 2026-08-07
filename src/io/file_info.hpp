@@ -37,11 +37,11 @@ class file_info
     io::path path_;
 
     io::file_type type_ = file_type::none;
-    io::file_size size_;
-    io::perms perms_;
-    io::uid uid_;
-    io::gid gid_;
-    io::hardlink_count hardlink_count_;
+    io::file_size size_ = 0;
+    io::perms perms_ = perms::unknown;
+    io::uid uid_ = 0;
+    io::gid gid_ = 0;
+    io::hardlink_count hardlink_count_ = 0;
 
 public:
     file_info() noexcept = default;
