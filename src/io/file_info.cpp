@@ -59,7 +59,7 @@ std::expected<file_info, error_code> file_info::get(io::path path) noexcept
 std::expected<file_info, error_code> file_info::get(io::path path, follow_symlinks_t) noexcept
 {
     error_code ec;
-    file_info info{std::move(path), follow_symlinks, ec};
+    file_info info{std::move(path), io::follow_symlinks, ec};
 
     if (ec) return std::unexpected(ec);
     else return info;

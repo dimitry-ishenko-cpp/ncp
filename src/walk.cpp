@@ -82,7 +82,7 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
         auto is_dir = info->is_directory();
         if (is_link)
         {
-            info = info->target();
+            info = info->follow_symlinks();
             if (!info) { state.add_error(info.error(), source); return; }
             is_dir = info->is_directory();
         }

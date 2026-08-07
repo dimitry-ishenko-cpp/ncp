@@ -11,6 +11,7 @@
 #include <expected>
 #include <filesystem>
 #include <system_error>
+#include <utility>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
@@ -74,10 +75,11 @@ public:
     bool is_standard    () const noexcept { return is_regular_file() || is_directory()   || is_symlink(); }
     bool is_special     () const noexcept { return is_block_device() || is_char_device() || is_fifo() || is_socket(); }
 
-    std::expected<file_info, error_code> target() const
+    ////////////////////
+    std::expected<file_info, error_code> follow_symlinks() const
     {
         if (!is_symlink()) return *this;
-        else return file_info::get(path_, follow_symlinks);
+        else return file_info::get(path_, io::follow_symlinks);
     }
 
 private:
