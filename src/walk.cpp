@@ -65,10 +65,10 @@ std::generator<fs::directory_entry> walk_dir(const options& options, state& stat
 
 void walk_one(const options& options, state& state, asio::thread_pool& pool, const io::path& source, const io::path& target)
 {
-    auto info = io::file_info::get(source);
-    if (!info) { state.add_error(info.error(), source); return; }
+    auto esrc = io::file_info::get(source);
+    if (!esrc) { state.add_error(esrc.error(), source); return; }
 
-    auto is_link = info->is_symlink();
+    auto is_link = esrc->is_symlink();
     if (is_link && options.keep_links)
     {
         auto res = ::read_symlink(source)
@@ -79,12 +79,12 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
     }
     else
     {
-        auto is_dir = info->is_directory();
+        auto is_dir = esrc->is_directory();
         if (is_link)
         {
-            info = info->follow_symlinks();
-            if (!info) { state.add_error(info.error(), source); return; }
-            is_dir = info->is_directory();
+            esrc = esrc->follow_symlinks();
+            if (!esrc) { state.add_error(esrc.error(), source); return; }
+            is_dir = esrc->is_directory();
         }
 
         if (is_dir)
@@ -135,10 +135,10 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
 
 void walk_all(const options& options, state& state, asio::thread_pool& pool)
 {
-    auto info = io::file_info::get(options.target);
-    if (!info) { state.add_error(info.error(), options.target); return; }
+    auto etgt = io::file_info::get(options.target);
+    if (!etgt) { state.add_error(etgt.error(), options.target); return; }
 
-    if (info->is_directory())
+    if (etgt->is_directory())
     {
         for (auto&& source : options.sources)
         {
