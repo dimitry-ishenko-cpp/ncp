@@ -7,27 +7,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include <cstdint>
+#include "file.hpp"
+
 #include <expected>
-#include <filesystem>
-#include <system_error>
-#include <utility>
+#include <utility> // std::move
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
-
-using std::filesystem::file_type;
-using std::filesystem::path;
-using std::filesystem::perms;
-
-using file_size = std::uintmax_t;
-using hardlink_count = std::uintmax_t;
-
-using uid = std::uint32_t;
-using gid = std::uint32_t;
-
-using std::error_code;
 
 struct follow_symlinks_t { explicit follow_symlinks_t() = default; };
 inline constexpr follow_symlinks_t follow_symlinks{};
