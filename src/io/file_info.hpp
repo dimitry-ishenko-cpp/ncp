@@ -29,6 +29,7 @@ class file_info
     io::perms perms_ = perms::unknown;
     io::uid uid_ = 0;
     io::gid gid_ = 0;
+    io::time_type mtime_{};
     io::hardlink_count hardlink_count_ = 0;
 
 public:
@@ -46,6 +47,7 @@ public:
     auto perms() const noexcept { return perms_; }
     auto   uid() const noexcept { return   uid_; }
     auto   gid() const noexcept { return   gid_; }
+    auto mtime() const noexcept { return mtime_; }
     auto hardlink_count() const noexcept { return hardlink_count_; }
 
     bool exists() const noexcept { return type_ != file_type::none && type_ != file_type::not_found; }

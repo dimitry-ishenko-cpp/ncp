@@ -8,6 +8,7 @@
 #include "file_info.hpp"
 
 #include <cerrno>
+#include <chrono>
 #include <string>
 
 #include <sys/stat.h>
@@ -50,6 +51,12 @@ file_info::file_info(io::path path, bool follow_symlinks, error_code& ec) noexce
         uid_   = static_cast<io::uid>(st.st_uid);
         gid_   = static_cast<io::gid>(st.st_gid);
         hardlink_count_ = static_cast<io::hardlink_count>(st.st_nlink);
+
+        using namespace std::chrono;
+        auto mtime = duration_cast<time_type::duration>(
+            seconds{st.st_mtim.tv_sec} + nanoseconds{st.st_mtim.tv_nsec}
+        );
+        mtime_ = time_type{mtime};
     }
 }
 

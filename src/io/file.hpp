@@ -18,6 +18,7 @@ namespace io
 using std::filesystem::file_type;
 using std::filesystem::path;
 using std::filesystem::perms;
+using time_type = std::filesystem::file_time_type;
 
 using file_size = std::uintmax_t;
 using hardlink_count = std::uintmax_t;
