@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <system_error>
 
@@ -27,5 +28,8 @@ using uid = std::uint32_t;
 using gid = std::uint32_t;
 
 using std::error_code;
+
+////////////////////////////////////////////////////////////////////////////////
+std::expected<void, error_code> create_symlink(const path& to, const path& new_link);
 
 }
