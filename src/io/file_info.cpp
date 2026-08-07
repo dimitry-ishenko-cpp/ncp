@@ -17,6 +17,9 @@
 namespace io
 {
 
+namespace { auto make_error_code(int eval) { return error_code{eval, std::generic_category()}; } }
+
+////////////////////////////////////////////////////////////////////////////////
 file_info::file_info(io::path path, bool follow_symlinks, error_code& ec) noexcept :
     path_{std::move(path)}
 {
@@ -29,7 +32,7 @@ file_info::file_info(io::path path, bool follow_symlinks, error_code& ec) noexce
     {
         if (errno == ENOENT || errno == ENOTDIR)
             type_ = file_type::not_found;
-        else ec = error_code{ errno, std::generic_category() };
+        else ec = make_error_code(errno);
     }
     else
     {
@@ -70,12 +73,14 @@ std::expected<file_info, error_code> file_info::get(io::path path, follow_symlin
 
 std::expected<io::path, error_code> file_info::target_path() const
 {
+    if (!is_symlink()) return std::unexpected(make_error_code(EINVAL));
+
     std::string buf(size_ ? size_ + 1 : 128, '\0');
 
     do
     {
         auto len = ::readlink(path_.string().c_str(), buf.data(), buf.size());
-        if (len < 0) return std::unexpected(error_code{ errno, std::generic_category() });
+        if (len < 0) return std::unexpected(make_error_code(errno));
 
         if (len < buf.size())
         {
