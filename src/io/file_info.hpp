@@ -82,6 +82,8 @@ public:
         else return file_info::get(path_, io::follow_symlinks);
     }
 
+    std::expected<io::path, error_code> target_path() const;
+
 private:
     file_info(io::path, bool follow_symlinks, error_code&) noexcept;
 };

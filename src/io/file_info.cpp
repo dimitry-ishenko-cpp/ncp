@@ -8,7 +8,10 @@
 #include "file_info.hpp"
 
 #include <cerrno>
+#include <string>
+
 #include <sys/stat.h>
+#include <unistd.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
@@ -63,6 +66,25 @@ std::expected<file_info, error_code> file_info::get(io::path path, follow_symlin
 
     if (ec) return std::unexpected(ec);
     else return info;
+}
+
+std::expected<io::path, error_code> file_info::target_path() const
+{
+    std::string buf(size_ ? size_ + 1 : 128, '\0');
+
+    do
+    {
+        auto len = ::readlink(path_.string().c_str(), buf.data(), buf.size());
+        if (len < 0) return std::unexpected(error_code{ errno, std::generic_category() });
+
+        if (len < buf.size())
+        {
+            buf.resize(len);
+            return buf;
+        }
+        else buf.resize(buf.size() * 2, '\0');
+    }
+    while (true);
 }
 
 }
