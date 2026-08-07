@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <generator>
 #include <system_error>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,5 +32,7 @@ using std::error_code;
 
 ////////////////////////////////////////////////////////////////////////////////
 std::expected<void, error_code> create_symlink(const path& to, const path& new_link);
+
+std::generator<std::expected<path, error_code>> directory_iterator(const path&);
 
 }
