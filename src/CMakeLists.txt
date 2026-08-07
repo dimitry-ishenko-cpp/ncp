@@ -10,6 +10,7 @@ include(GNUInstallDirs)
 
 add_executable(ncp
     file.cpp
+    io/file_info.cpp
     ncp.cpp
     report.cpp
     walk.cpp
