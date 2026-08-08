@@ -66,27 +66,27 @@ std::generator<fs::directory_entry> walk_dir(const options& options, state& stat
 
 void walk_one(const options& options, state& state, asio::thread_pool& pool, const io::path& source, const io::path& target)
 {
-    auto esrc = io::file_info::get(source);
-    if (!esrc) { state.add_error(esrc.error(), source); return; }
+    auto source_info = io::file_info::get(source);
+    if (!source_info) { state.add_error(source_info.error(), source); return; }
 
-    auto is_link = esrc->is_symlink();
+    auto is_link = source_info->is_symlink();
     if (is_link && options.keep_links)
     {
-        if (auto elnk = esrc->target_path())
+        if (auto link_info = source_info->target_path())
         {
-            auto eval = io::create_symlink(elnk.value(), target);
-            if (!eval) state.add_error(eval.error(), target);
+            auto res = io::create_symlink(link_info.value(), target);
+            if (!res) state.add_error(res.error(), target);
         }
-        else state.add_error(elnk.error(), esrc->path());
+        else state.add_error(link_info.error(), source_info->path());
     }
     else
     {
-        auto is_dir = esrc->is_directory();
+        auto is_dir = source_info->is_directory();
         if (is_link)
         {
-            esrc = esrc->follow_symlinks();
-            if (!esrc) { state.add_error(esrc.error(), source); return; }
-            is_dir = esrc->is_directory();
+            source_info = source_info->follow_symlinks();
+            if (!source_info) { state.add_error(source_info.error(), source); return; }
+            is_dir = source_info->is_directory();
         }
 
         if (is_dir)
@@ -137,10 +137,10 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
 
 void walk_all(const options& options, state& state, asio::thread_pool& pool)
 {
-    auto etgt = io::file_info::get(options.target);
-    if (!etgt) { state.add_error(etgt.error(), options.target); return; }
+    auto target_info = io::file_info::get(options.target);
+    if (!target_info) { state.add_error(target_info.error(), options.target); return; }
 
-    if (etgt->is_directory())
+    if (target_info->is_directory())
     {
         for (auto&& source : options.sources)
         {
