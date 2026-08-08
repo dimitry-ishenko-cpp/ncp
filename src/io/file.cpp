@@ -12,6 +12,7 @@
 #include <string_view>
 
 #include <dirent.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,6 +21,15 @@ namespace io
 
 namespace { auto make_error_code(int eval) { return error_code{eval, std::generic_category()}; } }
 
+////////////////////////////////////////////////////////////////////////////////
+std::expected<void, error_code> create_directory(const path& path, perms perms)
+{
+    auto code = ::mkdir(path.c_str(), static_cast<::mode_t>(perms));
+    if (code && errno != EEXIST) return std::unexpected(make_error_code(errno));
+    else return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
 std::expected<void, error_code> create_symlink(const path& to, const path& new_link)
 {
     auto code = ::symlink(to.c_str(), new_link.c_str());
@@ -27,6 +37,7 @@ std::expected<void, error_code> create_symlink(const path& to, const path& new_l
     else return {};
 }
 
+////////////////////////////////////////////////////////////////////////////////
 std::generator<std::expected<path, error_code>> directory_iterator(const path& path)
 {
     struct dir_close { void operator()(DIR* dirp) { ::closedir(dirp); } };

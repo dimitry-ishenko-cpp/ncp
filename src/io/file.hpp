@@ -31,6 +31,7 @@ using gid = std::uint32_t;
 using std::error_code;
 
 ////////////////////////////////////////////////////////////////////////////////
+std::expected<void, error_code> create_directory(const path&, perms = perms::all);
 std::expected<void, error_code> create_symlink(const path& to, const path& new_link);
 
 std::generator<std::expected<path, error_code>> directory_iterator(const path&);
