@@ -9,9 +9,6 @@
 
 #include "file.hpp"
 
-#include <expected>
-#include <utility> // std::move
-
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
@@ -34,11 +31,11 @@ class file_info
 
 public:
     file_info() noexcept = default;
-    file_info(io::path path, error_code& ec) noexcept : file_info{std::move(path), false, ec} { }
-    file_info(io::path path, follow_symlinks_t, error_code& ec) noexcept : file_info{std::move(path), true, ec} { }
+    file_info(io::path path, std::error_code& ec) noexcept : file_info{std::move(path), false, ec} { }
+    file_info(io::path path, follow_symlinks_t, std::error_code& ec) noexcept : file_info{std::move(path), true, ec} { }
 
-    static std::expected<file_info, error_code> get(io::path) noexcept;
-    static std::expected<file_info, error_code> get(io::path, follow_symlinks_t) noexcept;
+    static expected<file_info> get(io::path) noexcept;
+    static expected<file_info> get(io::path, follow_symlinks_t) noexcept;
 
     auto& path() const noexcept { return  path_; }
 
@@ -65,16 +62,16 @@ public:
     bool is_special     () const noexcept { return is_block_device() || is_char_device() || is_fifo() || is_socket(); }
 
     ////////////////////
-    std::expected<file_info, error_code> follow_symlinks() const
+    expected<file_info> follow_symlinks() const
     {
         if (!is_symlink()) return *this;
         else return file_info::get(path_, io::follow_symlinks);
     }
 
-    std::expected<io::path, error_code> target_path() const;
+    expected<io::path> get_target_path() const;
 
 private:
-    file_info(io::path, bool follow_symlinks, error_code&) noexcept;
+    file_info(io::path, bool follow_symlinks, std::error_code&) noexcept;
 };
 
 }

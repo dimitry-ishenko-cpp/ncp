@@ -34,12 +34,16 @@ struct error_info
     io::path path, path_to;
 };
 
-using std::error_code;
+template <typename T>
+using expected = std::expected<T, error_info>;
+using unexpected = std::unexpected<error_info>;
+
+unexpected make_unexpected(int val, path = {}, path = {});
 
 ////////////////////////////////////////////////////////////////////////////////
-std::expected<void, error_code> create_directory(const path&, perms = perms::all);
-std::expected<void, error_code> create_symlink(const path& to, const path& new_link);
+expected<void> create_directory(const path&, perms = perms::all);
+expected<void> create_symlink(const path& to, const path& new_link);
 
-std::generator<std::expected<path, error_code>> directory_iterator(const path&);
+std::generator<expected<path>> directory_iterator(const path&);
 
 }

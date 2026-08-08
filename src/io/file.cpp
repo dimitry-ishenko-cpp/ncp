@@ -19,26 +19,33 @@
 namespace io
 {
 
-namespace { auto make_error_code(int eval) { return error_code{eval, std::generic_category()}; } }
+unexpected make_unexpected(int val, io::path path, io::path path_to)
+{
+    return unexpected(error_info
+    {
+        std::error_code{val, std::generic_category()},
+        std::move(path), std::move(path_to)
+    });
+}
 
 ////////////////////////////////////////////////////////////////////////////////
-std::expected<void, error_code> create_directory(const path& path, perms perms)
+expected<void> create_directory(const path& path, perms perms)
 {
     auto code = ::mkdir(path.c_str(), static_cast<::mode_t>(perms));
-    if (code && errno != EEXIST) return std::unexpected(make_error_code(errno));
+    if (code && errno != EEXIST) return make_unexpected(errno, path);
     else return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::expected<void, error_code> create_symlink(const path& to, const path& new_link)
+expected<void> create_symlink(const path& to, const path& new_link)
 {
     auto code = ::symlink(to.c_str(), new_link.c_str());
-    if (code) return std::unexpected(make_error_code(errno));
+    if (code) return make_unexpected(errno, to, new_link);
     else return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::generator<std::expected<path, error_code>> directory_iterator(const path& path)
+std::generator<expected<path>> directory_iterator(const path& path)
 {
     struct dir_close { void operator()(DIR* dirp) { ::closedir(dirp); } };
 
@@ -55,12 +62,12 @@ std::generator<std::expected<path, error_code>> directory_iterator(const path& p
             }
             else
             {
-                if (errno) co_yield std::unexpected(make_error_code(errno));
+                if (errno) co_yield make_unexpected(errno, path);
                 break;
             }
         }
     }
-    else co_yield std::unexpected(make_error_code(errno));
+    else co_yield make_unexpected(errno, path);
 }
 
 }

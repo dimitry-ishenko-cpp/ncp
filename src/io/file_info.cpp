@@ -18,10 +18,8 @@
 namespace io
 {
 
-namespace { auto make_error_code(int eval) { return error_code{eval, std::generic_category()}; } }
-
 ////////////////////////////////////////////////////////////////////////////////
-file_info::file_info(io::path path, bool follow_symlinks, error_code& ec) noexcept :
+file_info::file_info(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
     path_{std::move(path)}
 {
     ec.clear();
@@ -33,7 +31,7 @@ file_info::file_info(io::path path, bool follow_symlinks, error_code& ec) noexce
     {
         if (errno == ENOENT || errno == ENOTDIR)
             type_ = file_type::not_found;
-        else ec = make_error_code(errno);
+        else ec = std::error_code{errno, std::generic_category()};
     }
     else
     {
@@ -60,43 +58,42 @@ file_info::file_info(io::path path, bool follow_symlinks, error_code& ec) noexce
     }
 }
 
-std::expected<file_info, error_code> file_info::get(io::path path) noexcept
+expected<file_info> file_info::get(io::path path) noexcept
 {
-    error_code ec;
+    std::error_code ec;
     file_info info{std::move(path), ec};
 
-    if (ec) return std::unexpected(ec);
+    if (ec) return make_unexpected(ec.value(), std::move(info.path_));
     else return info;
 }
 
-std::expected<file_info, error_code> file_info::get(io::path path, follow_symlinks_t) noexcept
+expected<file_info> file_info::get(io::path path, follow_symlinks_t) noexcept
 {
-    error_code ec;
+    std::error_code ec;
     file_info info{std::move(path), io::follow_symlinks, ec};
 
-    if (ec) return std::unexpected(ec);
+    if (ec) return make_unexpected(ec.value(), std::move(info.path_));
     else return info;
 }
 
-std::expected<io::path, error_code> file_info::target_path() const
+expected<io::path> file_info::get_target_path() const
 {
-    if (!is_symlink()) return std::unexpected(make_error_code(EINVAL));
+    if (!is_symlink()) return make_unexpected(EINVAL, path_);
 
-    std::string buf(size_ ? size_ + 1 : 128, '\0');
-
-    do
+    for (std::string buf(size_ ? size_ + 1 : 128, '\0'); ;)
     {
-        auto len = ::readlink(path_.string().c_str(), buf.data(), buf.size());
-        if (len < 0) return std::unexpected(make_error_code(errno));
-
-        if (len < buf.size())
+        auto len = ::readlink(path_.c_str(), buf.data(), buf.size());
+        if (len < 0)
+            return make_unexpected(errno, path_);
+        else if (len < buf.size())
         {
             buf.resize(len);
             return buf;
         }
+        else if (buf.size() == 4096)
+            return make_unexpected(ENAMETOOLONG, path_);
         else buf.resize(buf.size() * 2, '\0');
     }
-    while (true);
 }
 
 }
