@@ -28,6 +28,12 @@ using hardlink_count = std::uintmax_t;
 using uid = std::uint32_t;
 using gid = std::uint32_t;
 
+struct error_info
+{
+    std::error_code code;
+    io::path path, path_to;
+};
+
 using std::error_code;
 
 ////////////////////////////////////////////////////////////////////////////////
