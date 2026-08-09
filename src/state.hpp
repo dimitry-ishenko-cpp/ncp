@@ -32,6 +32,15 @@ struct state
         errors.push_back(std::move(msg));
         ++error_count;
     }
+    void add_error(const std::string& msg, const io::path& path) {
+        add_error(std::format("{}: '{}'", msg, path.string()));
+    }
+    void add_error(std::string msg, const io::path& path, const io::path& path_to) {
+        add_error(std::format("{}: '{}' => '{}'", msg, path.string(), path_to.string()));
+    }
+    void add_error(std::error_code ec, const auto&... path) { add_error(ec.message(), path...); }
+    void add_error(std::errc cond, const auto&... path) { add_error(std::make_error_code(cond), path...); }
+
     void add_error(const error& e)
     {
         if (!e.path2.empty())
@@ -42,24 +51,10 @@ struct state
     }
     void add_error(const io::error_info& e)
     {
-        if (!e.path_to.empty())
-            add_error(std::format("{}: '{}' => '{}'", e.code.message(), e.path.string(), e.path_to.string()));
-        else if (!e.path.empty())
-            add_error(std::format("{}: '{}'", e.code.message(), e.path.string()));
+        if (!e.path_to.empty()) add_error(e.code, e.path, e.path_to);
+        else if (!e.path.empty()) add_error(e.code, e.path);
         else add_error(e.code.message());
     }
-    void add_error(const std::string& msg, const path& path)
-    {
-        add_error(std::format("{}: '{}'", msg, path.string()));
-    }
-    void add_error(std::string msg, const path& p1, const path& p2)
-    {
-        add_error(std::format("{}: '{}' => '{}'", msg, p1.string(), p2.string()));
-    }
-    void add_error(std::error_code ec, const path& path) { add_error(ec.message(), path); }
-    void add_error(std::error_code ec, const path& p1, const path& p2) { add_error(ec.message(), p1, p2); }
-
-    void add_error(std::errc cond, const path& path) { add_error(std::make_error_code(cond), path); }
 
     auto drain_errors()
     {
