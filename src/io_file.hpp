@@ -82,6 +82,8 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+void copy_file(const file&, const path&, std::error_code&);
+
 void create_directory(const path&, perms, std::error_code&);
 inline void create_directory(const path& path, std::error_code& ec) { create_directory(path, perms::all, ec); }
 

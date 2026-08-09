@@ -102,6 +102,12 @@ file file::follow_symlinks(std::error_code& ec) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void copy_file(const file& source, const path& target_path, std::error_code& ec)
+{
+    std::filesystem::copy_file(source.path(), target_path, ec);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void create_directory(const path& path, perms perms, std::error_code& ec)
 {
     auto res = ::mkdir(path.c_str(), static_cast<::mode_t>(perms));

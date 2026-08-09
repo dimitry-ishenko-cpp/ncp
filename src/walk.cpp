@@ -25,8 +25,8 @@ void post_copy_file(const options& options, state& state, asio::thread_pool& poo
         if (state.quit.load(std::memory_order_relaxed)) return;
 
         std::error_code ec;
-        auto res = copy_file(source.path(), target_path, ec);
-        if (!res) { state.add_error(ec, source.path(), target_path); return; }
+        io::copy_file(source, target_path, ec);
+        if (ec) { state.add_error(ec, source.path(), target_path); return; }
 
         state.files_copied.fetch_add(1, std::memory_order_relaxed);
         state.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
