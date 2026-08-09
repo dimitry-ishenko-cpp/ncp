@@ -16,63 +16,55 @@
 #include <generator>
 #include <ranges>
 
-namespace fs = std::filesystem;
-
 ////////////////////////////////////////////////////////////////////////////////
-void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const path& source, const path& target)
+void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const io::file_info& source, const path& target)
 {
-    auto size = ::file_size(source);
-    if (!size.has_value()) { state.add_error(size.error()); return; }
-
     state.files_total.fetch_add(1, std::memory_order_relaxed);
-    state.bytes_total.fetch_add(size.value(), std::memory_order_relaxed);
+    state.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
 
     asio::post(pool, [&options, &state, source, target]
     {
         if (state.quit.load(std::memory_order_relaxed)) return;
 
-        auto res = copy_file(source, target, options);
+        auto res = copy_file(source.path(), target, options);
         if (!res) { state.add_error(res.error()); return; }
 
-        auto size = ::file_size(source);
-        if (!size.has_value()) { state.add_error(size.error()); return; }
-
         state.files_copied.fetch_add(1, std::memory_order_relaxed);
-        state.bytes_copied.fetch_add(size.value(), std::memory_order_relaxed);
+        state.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
     });
 }
 
-std::generator<fs::directory_entry> walk_dir(const options& options, state& state, path dir)
+std::generator<io::file_info> walk_dir(const options& options, state& state, path dir)
 {
-    auto res = directory_iterator_for(dir);
-    if (!res) { state.add_error(res.error()); co_return; }
-
-    directory_iterator i = res.value(), end{};
-    while (i != end)
-    {
-        co_yield *i;
-
-        if (is_directory(i).value_or(false))
+    for (auto&& e_path : io::directory_iterator(dir))
+        if (e_path)
         {
-            if (!is_symlink(i).value_or(false) || !options.keep_links)
-                co_yield std::ranges::elements_of( walk_dir(options, state, i->path()) );
-        }
-        // ignore error above -- it will be dealt with by the yield recepient
+            auto e_path_info = io::file_info::get(*e_path);
+            if (!e_path_info) { state.add_error(e_path_info.error()); continue; }
 
-        auto res = increment(i);
-        if (!res) { state.add_error(res.error()); co_return; }
-    }
+            co_yield *e_path_info;
+
+            if (e_path_info->is_symlink() && !options.keep_links)
+                if (!(e_path_info = e_path_info->follow_symlinks()))
+                {
+                    state.add_error(e_path_info.error());
+                    continue;
+                }
+
+            if (e_path_info->is_directory())
+                co_yield std::ranges::elements_of( walk_dir(options, state, e_path_info->path()) );
+        }
+        else state.add_error(e_path.error());
 }
 
 void walk_one(const options& options, state& state, asio::thread_pool& pool, const io::path& source, const io::path& target)
 {
-    auto source_info = io::file_info::get(source);
-    if (!source_info) { state.add_error(source_info.error()); return; }
+    auto e_source_info = io::file_info::get(source);
+    if (!e_source_info) { state.add_error(e_source_info.error()); return; }
 
-    auto is_link = source_info->is_symlink();
-    if (is_link && options.keep_links)
+    if (e_source_info->is_symlink() && options.keep_links)
     {
-        auto res = source_info->get_target_path()
+        auto res = e_source_info->get_target_path()
             .and_then([&](auto&& link_target) {
                 return io::create_symlink(link_target, target);
             });
@@ -80,15 +72,13 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
     }
     else
     {
-        auto is_dir = source_info->is_directory();
-        if (is_link)
+        if (e_source_info->is_symlink())
         {
-            source_info = source_info->follow_symlinks();
-            if (!source_info) { state.add_error(source_info.error()); return; }
-            is_dir = source_info->is_directory();
+            e_source_info = e_source_info->follow_symlinks();
+            if (!e_source_info) { state.add_error(e_source_info.error()); return; }
         }
 
-        if (is_dir)
+        if (e_source_info->is_directory())
         {
             if (!options.recursive)
             {
@@ -96,50 +86,51 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
                 return;
             }
 
-            auto res = create_directory(target, options);
+            auto res = io::create_directory(target);
             if (!res) { state.add_error(res.error()); return; }
 
-            for (auto&& child : walk_dir(options, state, source))
+            for (auto&& source_child_info : walk_dir(options, state, source))
             {
                 if (state.quit.load(std::memory_order_relaxed)) break;
 
-                auto child_target = target / child.path().lexically_relative(source);
+                auto target_child = target / source_child_info.path().lexically_relative(source);
 
-                auto is_link = is_symlink(child);
-                if (!is_link.has_value()) { state.add_error(is_link.error()); continue; }
-
-                if (is_link.value() && options.keep_links)
+                if (source_child_info.is_symlink() && options.keep_links)
                 {
-                    auto res = ::read_symlink(child.path())
+                    auto res = source_child_info.get_target_path()
                         .and_then([&](auto&& link_target) {
-                            return create_symlink(link_target, child_target, options);
+                            return io::create_symlink(link_target, target_child);
                         });
                     if (!res) state.add_error(res.error());
                 }
                 else
                 {
-                    auto is_dir = is_directory(child);
-                    if (!is_dir.has_value()) { state.add_error(is_dir.error()); continue; }
-
-                    if (is_dir.value())
+                    if (source_child_info.is_symlink())
                     {
-                        auto res = create_directory(child_target, options);
+                        auto res = source_child_info.follow_symlinks();
+                        if (!res) { state.add_error(res.error()); continue; }
+                        source_child_info = *std::move(res);
+                    }
+
+                    if (source_child_info.is_directory())
+                    {
+                        auto res = io::create_directory(target_child);
                         if (!res) state.add_error(res.error());
                     }
-                    else post_copy_file(options, state, pool, child.path(), child_target);
+                    else post_copy_file(options, state, pool, source_child_info, target_child);
                 }
             }
         }
-        else post_copy_file(options, state, pool, source, target);
+        else post_copy_file(options, state, pool, *e_source_info, target);
     }
 }
 
 void walk_all(const options& options, state& state, asio::thread_pool& pool)
 {
-    auto target_info = io::file_info::get(options.target);
-    if (!target_info) { state.add_error(target_info.error()); return; }
+    auto e_target_info = io::file_info::get(options.target);
+    if (!e_target_info) { state.add_error(e_target_info.error()); return; }
 
-    if (target_info->is_directory())
+    if (e_target_info->is_directory())
     {
         for (auto&& source : options.sources)
         {
