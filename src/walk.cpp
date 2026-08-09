@@ -16,7 +16,7 @@
 #include <ranges>
 
 ////////////////////////////////////////////////////////////////////////////////
-void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const io::file_info& source, const path& target)
+void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const io::file_info& source, const io::path& target)
 {
     state.files_total.fetch_add(1, std::memory_order_relaxed);
     state.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
@@ -34,7 +34,7 @@ void post_copy_file(const options& options, state& state, asio::thread_pool& poo
     });
 }
 
-std::generator<io::file_info> walk_dir(const options& options, state& state, path dir)
+std::generator<io::file_info> walk_dir(const options& options, state& state, io::path dir)
 {
     for (auto&& e_path : io::directory_iterator(dir))
         if (e_path)

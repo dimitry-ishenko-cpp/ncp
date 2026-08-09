@@ -8,7 +8,6 @@
 #pragma once
 
 #include "io/file.hpp"
-#include "file.hpp"
 
 #include <atomic>
 #include <format>
@@ -41,14 +40,6 @@ struct state
     void add_error(std::error_code ec, const auto&... path) { add_error(ec.message(), path...); }
     void add_error(std::errc cond, const auto&... path) { add_error(std::make_error_code(cond), path...); }
 
-    void add_error(const error& e)
-    {
-        if (!e.path2.empty())
-            add_error(std::format("{}: '{}' => '{}'", e.code.message(), e.path1.string(), e.path2.string()));
-        else if (!e.path1.empty())
-            add_error(std::format("{}: '{}'", e.code.message(), e.path1.string()));
-        else add_error(e.code.message());
-    }
     void add_error(const io::error_info& e)
     {
         if (!e.path_to.empty()) add_error(e.code, e.path, e.path_to);
