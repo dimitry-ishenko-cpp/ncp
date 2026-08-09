@@ -7,6 +7,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
+#include "pgm_args.hpp"
+
 #include <algorithm>
 #include <cctype> // std::isalnum, std::isgraph
 #include <deque>
