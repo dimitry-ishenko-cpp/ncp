@@ -7,7 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "io/file.hpp"
+#include "io_file.hpp"
 
 #include <atomic>
 #include <format>
@@ -39,13 +39,6 @@ struct state
     }
     void add_error(std::error_code ec, const auto&... path) { add_error(ec.message(), path...); }
     void add_error(std::errc cond, const auto&... path) { add_error(std::make_error_code(cond), path...); }
-
-    void add_error(const io::error_info& e)
-    {
-        if (!e.path_to.empty()) add_error(e.code, e.path, e.path_to);
-        else if (!e.path.empty()) add_error(e.code, e.path);
-        else add_error(e.code.message());
-    }
 
     auto drain_errors()
     {

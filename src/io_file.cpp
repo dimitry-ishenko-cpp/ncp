@@ -5,12 +5,14 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
-#include "file_info.hpp"
+#include "io_file.hpp"
 
 #include <cerrno>
 #include <chrono>
 #include <string>
+#include <string_view>
 
+#include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -18,20 +20,23 @@
 namespace io
 {
 
+inline auto make_error_code(int val) { return std::error_code{val, std::generic_category()}; }
+
 ////////////////////////////////////////////////////////////////////////////////
-file_info::file_info(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
+file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
     path_{std::move(path)}
 {
-    ec.clear();
-
     struct stat st{};
     auto pfn = follow_symlinks ? ::stat : ::lstat;
 
     if (pfn(path_.c_str(), &st))
     {
         if (errno == ENOENT || errno == ENOTDIR)
+        {
             type_ = file_type::not_found;
-        else ec = std::error_code{errno, std::generic_category()};
+            ec.clear();
+        }
+        else ec = make_error_code(errno);
     }
     else
     {
@@ -55,45 +60,85 @@ file_info::file_info(io::path path, bool follow_symlinks, std::error_code& ec) n
             seconds{st.st_mtim.tv_sec} + nanoseconds{st.st_mtim.tv_nsec}
         );
         mtime_ = time_type{mtime};
+
+        ec.clear();
     }
 }
 
-expected<file_info> file_info::get(io::path path) noexcept
+path file::get_target_path(std::error_code& ec) const
 {
-    std::error_code ec;
-    file_info info{std::move(path), ec};
-
-    if (ec) return make_unexpected(ec.value(), std::move(info.path_));
-    else return info;
-}
-
-expected<file_info> file_info::get(io::path path, follow_symlinks_t) noexcept
-{
-    std::error_code ec;
-    file_info info{std::move(path), io::follow_symlinks, ec};
-
-    if (ec) return make_unexpected(ec.value(), std::move(info.path_));
-    else return info;
-}
-
-expected<io::path> file_info::get_target_path() const
-{
-    if (!is_symlink()) return make_unexpected(EINVAL, path_);
+    if (!is_symlink()) { ec = make_error_code(EINVAL); return {}; }
 
     for (std::string buf(size_ ? size_ + 1 : 128, '\0'); ;)
     {
         auto len = ::readlink(path_.c_str(), buf.data(), buf.size());
         if (len < 0)
-            return make_unexpected(errno, path_);
+        {
+            ec = make_error_code(errno);
+            return {};
+        }
         else if (len < buf.size())
         {
             buf.resize(len);
             return buf;
         }
         else if (buf.size() == 4096)
-            return make_unexpected(ENAMETOOLONG, path_);
+        {
+            ec = make_error_code(ENAMETOOLONG);
+            return {};
+        }
         else buf.resize(buf.size() * 2, '\0');
     }
+}
+
+file file::follow_symlinks(std::error_code& ec) const
+{
+    if (!is_symlink())
+    {
+        ec.clear();
+        return *this;
+    }
+    else return file{path_, io::follow_symlinks, ec};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void create_directory(const path& path, perms perms, std::error_code& ec)
+{
+    auto res = ::mkdir(path.c_str(), static_cast<::mode_t>(perms));
+    if (res && errno != EEXIST) ec = make_error_code(errno);
+    else ec.clear();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void create_symlink(const path& to, const path& new_link, std::error_code& ec)
+{
+    auto res = ::symlink(to.c_str(), new_link.c_str());
+    if (res) ec = make_error_code(errno);
+    else ec.clear();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+std::generator<std::expected<path, std::error_code>> directory_iterator(const path& path)
+{
+    if (auto dirp = ::opendir(path.c_str()))
+    {
+        for (;;)
+        {
+            errno = 0;
+            if (auto e = readdir(dirp))
+            {
+                std::string_view name = e->d_name;
+                if (name != "." && name != "..") co_yield path / name;
+            }
+            else
+            {
+                if (errno) co_yield std::unexpected(make_error_code(errno));
+                break;
+            }
+        }
+        ::closedir(dirp);
+    }
+    else co_yield std::unexpected(make_error_code(errno));
 }
 
 }

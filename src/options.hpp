@@ -15,8 +15,8 @@ namespace fs = std::filesystem;
 ////////////////////////////////////////////////////////////////////////////////
 struct options
 {
-    std::vector<fs::path> sources;
-    fs::path target;
+    std::vector<fs::path> source_paths;
+    fs::path target_path;
 
     bool recursive;
     bool keep_links;

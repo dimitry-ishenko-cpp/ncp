@@ -7,17 +7,32 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "file.hpp"
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <generator>
+#include <system_error>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
 
+using std::filesystem::file_type;
+using std::filesystem::path;
+using std::filesystem::perms;
+using time_type = std::filesystem::file_time_type;
+
+using file_size = std::uintmax_t;
+using hardlink_count = std::uintmax_t;
+
+using uid = std::uint32_t;
+using gid = std::uint32_t;
+
 struct follow_symlinks_t { explicit follow_symlinks_t() = default; };
 inline constexpr follow_symlinks_t follow_symlinks{};
 
 ////////////////////////////////////////////////////////////////////////////////
-class file_info
+class file
 {
     io::path path_;
 
@@ -30,12 +45,9 @@ class file_info
     io::hardlink_count hardlink_count_ = 0;
 
 public:
-    file_info() noexcept = default;
-    file_info(io::path path, std::error_code& ec) noexcept : file_info{std::move(path), false, ec} { }
-    file_info(io::path path, follow_symlinks_t, std::error_code& ec) noexcept : file_info{std::move(path), true, ec} { }
-
-    static expected<file_info> get(io::path) noexcept;
-    static expected<file_info> get(io::path, follow_symlinks_t) noexcept;
+    file() noexcept = default;
+    file(io::path path, std::error_code& ec) noexcept : file{std::move(path), false, ec} { }
+    file(io::path path, follow_symlinks_t, std::error_code& ec) noexcept : file{std::move(path), true, ec} { }
 
     auto& path() const noexcept { return  path_; }
 
@@ -62,16 +74,19 @@ public:
     bool is_special     () const noexcept { return is_block_device() || is_char_device() || is_fifo() || is_socket(); }
 
     ////////////////////
-    expected<file_info> follow_symlinks() const
-    {
-        if (!is_symlink()) return *this;
-        else return file_info::get(path_, io::follow_symlinks);
-    }
-
-    expected<io::path> get_target_path() const;
+    file follow_symlinks(std::error_code&) const;
+    io::path get_target_path(std::error_code&) const;
 
 private:
-    file_info(io::path, bool follow_symlinks, std::error_code&) noexcept;
+    file(io::path, bool follow_symlinks, std::error_code&) noexcept;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+void create_directory(const path&, perms, std::error_code&);
+inline void create_directory(const path& path, std::error_code& ec) { create_directory(path, perms::all, ec); }
+
+void create_symlink(const path& to, const path& new_link, std::error_code&);
+
+std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
 
 }

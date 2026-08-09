@@ -9,8 +9,7 @@ pkg_check_modules(asio REQUIRED IMPORTED_TARGET asio)
 include(GNUInstallDirs)
 
 add_executable(ncp
-    io/file.cpp
-    io/file_info.cpp
+    io_file.cpp
     ncp.cpp
     report.cpp
     walk.cpp

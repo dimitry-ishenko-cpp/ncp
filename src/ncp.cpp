@@ -76,26 +76,26 @@ try
         options options;
 
         auto&& sources = args["SOURCE"];
-        options.sources = std::ranges::to< decltype(options.sources) >(sources.values());
+        options.source_paths = std::ranges::to< decltype(options.source_paths) >(sources.values());
 
         auto&& destination = args["DESTINATION"];
         auto&& target = args["--target"];
         if (target)
         {
-            options.target = target.value();
-            if (fs::is_directory(options.target))
+            options.target_path = target.value();
+            if (fs::is_directory(options.target_path))
             {
                 // DESTINATION will capture the last positional parameter,
                 // but if --target was specified that value belongs in SOURCES
-                if (destination) options.sources.push_back(destination.value());
+                if (destination) options.source_paths.push_back(destination.value());
             }
             else throw fs::filesystem_error{"main",
-                options.target, std::make_error_code(std::errc::not_a_directory)
+                options.target_path, std::make_error_code(std::errc::not_a_directory)
             };
         }
         else
         {
-            if (destination) options.target = destination.value();
+            if (destination) options.target_path = destination.value();
             else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
         }
 
