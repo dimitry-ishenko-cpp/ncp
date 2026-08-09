@@ -5,7 +5,6 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
-#include "file.hpp"
 #include "io/file.hpp"
 #include "io/file_info.hpp"
 #include "options.hpp"
@@ -26,8 +25,9 @@ void post_copy_file(const options& options, state& state, asio::thread_pool& poo
     {
         if (state.quit.load(std::memory_order_relaxed)) return;
 
-        auto res = copy_file(source.path(), target, options);
-        if (!res) { state.add_error(res.error()); return; }
+        std::error_code ec;
+        auto res = copy_file(source.path(), target, ec);
+        if (!res) { state.add_error(ec, source.path(), target); return; }
 
         state.files_copied.fetch_add(1, std::memory_order_relaxed);
         state.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
