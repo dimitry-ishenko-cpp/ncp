@@ -106,23 +106,31 @@ file file::follow_symlinks(std::error_code& ec) const
 ////////////////////////////////////////////////////////////////////////////////
 void copy_file(const file& source, const path& target_path, std::error_code& ec)
 {
+    // TODO
     std::filesystem::copy_file(source.path(), target_path, ec);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void create_directory(const path& path, perms perms, std::error_code& ec)
 {
-    auto res = ::mkdir(path.c_str(), static_cast<::mode_t>(perms));
-    if (res && errno != EEXIST) ec = make_error_code(errno);
+    if (::mkdir(path.c_str(), static_cast<::mode_t>(perms)))
+    {
+        if (errno == EEXIST)
+        {
+            struct stat st{};
+            if (!::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode)) ec.clear();
+            else ec = make_error_code(EEXIST);
+        }
+        else ec = make_error_code(errno);
+    }
     else ec.clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void create_symlink(const path& to, const path& new_link, std::error_code& ec)
 {
-    auto res = ::symlink(to.c_str(), new_link.c_str());
-    if (res) ec = make_error_code(errno);
-    else ec.clear();
+    if (!::symlink(to.c_str(), new_link.c_str())) ec.clear();
+    else ec = make_error_code(errno);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
