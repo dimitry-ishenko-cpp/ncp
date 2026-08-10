@@ -9,6 +9,7 @@
 
 #include <cerrno>
 #include <chrono>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -69,7 +70,8 @@ path file::get_target_path(std::error_code& ec) const
 {
     if (!is_symlink()) { ec = make_error_code(EINVAL); return {}; }
 
-    for (std::string buf(size_ ? size_ + 1 : 128, '\0'); ;)
+    std::string buf(size_ ? size_ + 1 : 128, '\0');
+    for (;;)
     {
         auto len = ::readlink(path_.c_str(), buf.data(), buf.size());
         if (len < 0)
@@ -82,7 +84,7 @@ path file::get_target_path(std::error_code& ec) const
             buf.resize(len);
             return buf;
         }
-        else if (buf.size() == 4096)
+        else if (buf.size() >= 4096)
         {
             ec = make_error_code(ENAMETOOLONG);
             return {};
@@ -126,12 +128,13 @@ void create_symlink(const path& to, const path& new_link, std::error_code& ec)
 ////////////////////////////////////////////////////////////////////////////////
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path& path)
 {
-    if (auto dirp = ::opendir(path.c_str()))
-    {
+    std::unique_ptr<DIR, int(*)(DIR*)> dirp{ ::opendir(path.c_str()), ::closedir };
+
+    if (dirp)
         for (;;)
         {
             errno = 0;
-            if (auto e = readdir(dirp))
+            if (auto e = readdir(dirp.get()))
             {
                 std::string_view name = e->d_name;
                 if (name != "." && name != "..") co_yield path / name;
@@ -142,8 +145,6 @@ std::generator<std::expected<path, std::error_code>> directory_iterator(const pa
                 break;
             }
         }
-        ::closedir(dirp);
-    }
     else co_yield std::unexpected(make_error_code(errno));
 }
 
