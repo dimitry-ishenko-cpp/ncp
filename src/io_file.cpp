@@ -136,7 +136,8 @@ void create_symlink(const path& to, const path& new_link, std::error_code& ec)
 ////////////////////////////////////////////////////////////////////////////////
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path& path)
 {
-    std::unique_ptr<DIR, int(*)(DIR*)> dirp{ ::opendir(path.c_str()), ::closedir };
+    auto dir_close = [](DIR* p) { ::closedir(p); };
+    std::unique_ptr<DIR, decltype (dir_close)> dirp{ ::opendir(path.c_str()) };
 
     if (dirp)
         for (;;)
