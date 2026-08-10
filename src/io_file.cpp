@@ -14,6 +14,8 @@
 #include <string_view>
 
 #include <dirent.h>
+#include <fcntl.h>
+#include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -106,8 +108,92 @@ file file::follow_symlinks(std::error_code& ec) const
 ////////////////////////////////////////////////////////////////////////////////
 void copy_file(const file& source, const path& target_path, std::error_code& ec)
 {
-    // TODO
-    std::filesystem::copy_file(source.path(), target_path, ec);
+    struct auto_close
+    {
+        int fd = -1;
+        ~auto_close() { if (fd != -1) ::close(fd); }
+    };
+    constexpr file_size chunk_size = 4 * 1024 * 1024;
+
+    auto_close in{ ::open(source.path().c_str(), O_RDONLY | O_CLOEXEC) };
+    if (in.fd < 0) { ec = make_error_code(errno); return; }
+
+    auto_close out{ ::open(target_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
+    if (out.fd < 0) { ec = make_error_code(errno); return; }
+
+    auto remain = source.size();
+
+    // try copy_file_range
+    while (remain)
+    {
+        auto copied = ::copy_file_range(in.fd, nullptr, out.fd, nullptr, std::min(remain, chunk_size), 0);
+        if (copied < 0)
+        {
+            if (errno == EINTR) continue;
+
+            // not supported
+            if (errno == ENOSYS || errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
+
+            ec = make_error_code(errno);
+            return;
+        }
+        else if (copied > 0) remain -= copied;
+        else remain = 0; // file shrunk?
+    }
+
+    // try sendfile
+    while (remain)
+    {
+        auto copied = ::sendfile(out.fd, in.fd, nullptr, std::min(remain, chunk_size));
+        if (copied < 0)
+        {
+            if (errno == EINTR) continue;
+
+            // not supported
+            if (errno == EINVAL || errno == ENOSYS) break;
+
+            ec = make_error_code(errno);
+            return;
+        }
+        else if (copied > 0) remain -= copied;
+        else remain = 0; // file shrunk?
+    }
+
+    // try read/write
+    if (remain)
+    {
+        auto buf = std::make_unique_for_overwrite<char[]>(chunk_size);
+        do
+        {
+            auto rn = ::read(in.fd, buf.get(), std::min(remain, chunk_size));
+            if (rn < 0)
+            {
+                if (errno == EINTR) continue;
+
+                ec = make_error_code(errno);
+                return;
+            }
+            else if (rn > 0)
+            {
+                for (auto p = buf.get(); rn; )
+                {
+                    auto wn = ::write(out.fd, p, rn);
+                    if (wn < 0)
+                    {
+                        if (errno == EINTR) continue;
+
+                        ec = make_error_code(errno);
+                        return;
+                    }
+                    else rn -= wn, p += wn, remain -= wn;
+                }
+            }
+            else remain = 0; // file shrunk?
+        }
+        while (remain);
+    }
+
+    ec.clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
