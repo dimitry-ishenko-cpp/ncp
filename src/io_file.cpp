@@ -59,10 +59,10 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
         hardlink_count_ = static_cast<io::hardlink_count>(st.st_nlink);
 
         using namespace std::chrono;
-        auto mtime = duration_cast<time_type::duration>(
+        auto mtime = duration_cast<io::time::duration>(
             seconds{st.st_mtim.tv_sec} + nanoseconds{st.st_mtim.tv_nsec}
         );
-        mtime_ = time_type{mtime};
+        time_ = io::time{mtime};
 
         ec.clear();
     }

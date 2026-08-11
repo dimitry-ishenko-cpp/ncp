@@ -20,7 +20,7 @@ namespace io
 using std::filesystem::file_type;
 using std::filesystem::path;
 using mode = std::filesystem::perms;
-using time_type = std::filesystem::file_time_type;
+using time = std::filesystem::file_time_type;
 
 using file_size = std::uintmax_t;
 using hardlink_count = std::uintmax_t;
@@ -41,7 +41,7 @@ class file
     io::mode mode_ = mode::unknown;
     io::uid uid_ = 0;
     io::gid gid_ = 0;
-    io::time_type mtime_{};
+    io::time time_{};
     io::hardlink_count hardlink_count_ = 0;
 
 public:
@@ -51,12 +51,12 @@ public:
 
     auto& path() const noexcept { return  path_; }
 
-    auto  type() const noexcept { return  type_; }
-    auto  size() const noexcept { return  size_; }
-    auto  mode() const noexcept { return  mode_; }
-    auto   uid() const noexcept { return   uid_; }
-    auto   gid() const noexcept { return   gid_; }
-    auto mtime() const noexcept { return mtime_; }
+    auto type() const noexcept { return type_; }
+    auto size() const noexcept { return size_; }
+    auto mode() const noexcept { return mode_; }
+    auto  uid() const noexcept { return  uid_; }
+    auto  gid() const noexcept { return  gid_; }
+    auto time() const noexcept { return time_; }
     auto hardlink_count() const noexcept { return hardlink_count_; }
 
     bool exists() const noexcept { return type_ != file_type::none && type_ != file_type::not_found; }
