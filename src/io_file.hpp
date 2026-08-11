@@ -13,6 +13,8 @@
 #include <generator>
 #include <system_error>
 
+#include <sys/types.h> // gid_t, uid_t
+
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
@@ -25,8 +27,8 @@ using time = std::filesystem::file_time_type;
 using file_size = std::uintmax_t;
 using hardlink_count = std::uintmax_t;
 
-using uid = std::uint32_t;
-using gid = std::uint32_t;
+using uid = uid_t;
+using gid = gid_t;
 
 struct follow_symlinks_t { explicit follow_symlinks_t() = default; };
 inline constexpr follow_symlinks_t follow_symlinks{};

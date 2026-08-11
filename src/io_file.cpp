@@ -52,11 +52,11 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
         else if (S_ISSOCK(st.st_mode)) type_ = file_type::socket;
         else type_ = file_type::unknown;
 
-        size_ = static_cast<io::file_size>(st.st_size);
+        size_ = st.st_size;
         mode_ = static_cast<io::mode>(st.st_mode & 07777);
-        uid_  = static_cast<io::uid>(st.st_uid);
-        gid_  = static_cast<io::gid>(st.st_gid);
-        hardlink_count_ = static_cast<io::hardlink_count>(st.st_nlink);
+        uid_  = st.st_uid;
+        gid_  = st.st_gid;
+        hardlink_count_ = st.st_nlink;
 
         using namespace std::chrono;
         auto mtime = duration_cast<io::time::duration>(
