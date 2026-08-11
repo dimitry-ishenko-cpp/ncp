@@ -52,10 +52,10 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
         else if (S_ISSOCK(st.st_mode)) type_ = file_type::socket;
         else type_ = file_type::unknown;
 
-        size_  = static_cast<io::file_size>(st.st_size);
-        perms_ = static_cast<io::perms>(st.st_mode & 07777);
-        uid_   = static_cast<io::uid>(st.st_uid);
-        gid_   = static_cast<io::gid>(st.st_gid);
+        size_ = static_cast<io::file_size>(st.st_size);
+        mode_ = static_cast<io::mode>(st.st_mode & 07777);
+        uid_  = static_cast<io::uid>(st.st_uid);
+        gid_  = static_cast<io::gid>(st.st_gid);
         hardlink_count_ = static_cast<io::hardlink_count>(st.st_nlink);
 
         using namespace std::chrono;
@@ -197,9 +197,9 @@ void copy_file(const file& source, const path& target_path, std::error_code& ec)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void create_directory(const path& path, perms perms, std::error_code& ec)
+void create_directory(const path& path, mode mode, std::error_code& ec)
 {
-    if (::mkdir(path.c_str(), static_cast<::mode_t>(perms)))
+    if (::mkdir(path.c_str(), static_cast<::mode_t>(mode)))
     {
         if (errno == EEXIST)
         {

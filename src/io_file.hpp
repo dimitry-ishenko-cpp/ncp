@@ -19,7 +19,7 @@ namespace io
 
 using std::filesystem::file_type;
 using std::filesystem::path;
-using std::filesystem::perms;
+using mode = std::filesystem::perms;
 using time_type = std::filesystem::file_time_type;
 
 using file_size = std::uintmax_t;
@@ -38,7 +38,7 @@ class file
 
     io::file_type type_ = file_type::none;
     io::file_size size_ = 0;
-    io::perms perms_ = perms::unknown;
+    io::mode mode_ = mode::unknown;
     io::uid uid_ = 0;
     io::gid gid_ = 0;
     io::time_type mtime_{};
@@ -53,7 +53,7 @@ public:
 
     auto  type() const noexcept { return  type_; }
     auto  size() const noexcept { return  size_; }
-    auto perms() const noexcept { return perms_; }
+    auto  mode() const noexcept { return  mode_; }
     auto   uid() const noexcept { return   uid_; }
     auto   gid() const noexcept { return   gid_; }
     auto mtime() const noexcept { return mtime_; }
@@ -84,8 +84,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 void copy_file(const file&, const path&, std::error_code&);
 
-void create_directory(const path&, perms, std::error_code&);
-inline void create_directory(const path& path, std::error_code& ec) { create_directory(path, perms::all, ec); }
+void create_directory(const path&, mode, std::error_code&);
+inline void create_directory(const path& path, std::error_code& ec) { create_directory(path, mode::all, ec); }
 
 void create_symlink(const path& to, const path& new_link, std::error_code&);
 
