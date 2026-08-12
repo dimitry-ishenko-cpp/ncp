@@ -20,6 +20,8 @@
 namespace io
 {
 
+using exception = std::filesystem::filesystem_error;
+
 using std::filesystem::file_type;
 using std::filesystem::path;
 using mode = std::filesystem::perms;
