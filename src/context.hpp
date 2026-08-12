@@ -18,8 +18,15 @@
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
-struct state
+struct context
 {
+    bool keep_group = false, keep_user = false;
+    bool keep_mode = false;
+
+    bool recursive = false;
+    bool keep_links = false;
+
+    ////////////////////
     std::atomic<bool> quit{ false };
 
     std::atomic<long> files_total, files_copied;
