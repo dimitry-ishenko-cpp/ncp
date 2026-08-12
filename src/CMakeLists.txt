@@ -11,7 +11,6 @@ include(GNUInstallDirs)
 add_executable(ncp
     file.cpp
     ncp.cpp
-    walk.cpp
 )
 target_link_libraries(ncp PRIVATE PkgConfig::asio)
 
