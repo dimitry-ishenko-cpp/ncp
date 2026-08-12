@@ -62,6 +62,7 @@ public:
     file(io::path path, follow_symlinks_t, std::error_code& ec) noexcept : file{std::move(path), true, ec} { }
 
     bool empty() const noexcept { return type_ == file_type::none; }
+    explicit operator bool() const noexcept { return !empty(); }
     void clear() noexcept { *this = file{}; }
 
     auto& path() const noexcept { return  path_; }
@@ -75,7 +76,6 @@ public:
     auto hardlink_count() const noexcept { return hardlink_count_; }
 
     bool exists() const noexcept { return type_ != file_type::none && type_ != file_type::not_found; }
-    explicit operator bool() const noexcept { return exists(); }
 
     bool is_regular_file() const noexcept { return type_ == file_type::regular;   }
     bool is_directory   () const noexcept { return type_ == file_type::directory; }
