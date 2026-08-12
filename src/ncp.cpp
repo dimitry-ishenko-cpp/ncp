@@ -5,8 +5,8 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
+#include "args.hpp"
 #include "options.hpp"
-#include "pgm_args.hpp"
 #include "state.hpp"
 
 #include <asio.hpp>
