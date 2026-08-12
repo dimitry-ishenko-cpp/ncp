@@ -6,19 +6,17 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 #include "args.hpp"
+#include "file.hpp"
 #include "options.hpp"
 #include "state.hpp"
 
 #include <asio.hpp>
 #include <csignal>
 #include <exception>
-#include <filesystem>
 #include <format>
 #include <print>
 #include <ranges>
 #include <string>
-
-namespace fs = std::filesystem;
 
 void show_usage(const pgm::args& args, const std::string& name);
 void show_version(const std::string& name);
@@ -43,7 +41,7 @@ int main(int argc, char* argv[])
 try
 {
     int exit_code = 0;
-    auto name = fs::path{argv[0]}.filename().string();
+    auto name = io::path{argv[0]}.filename().string();
 
     pgm::args args
     {
@@ -86,16 +84,19 @@ try
         auto&& target = args["--target"];
         if (target)
         {
-            options.target_path = target.value();
-            if (fs::is_directory(options.target_path))
+            std::error_code ec;
+            io::file tf{target.value(), io::follow_symlinks, ec};
+            if (ec) throw io::exception{"main", tf.path(), ec};
+
+            if (tf.is_directory())
             {
+                options.target_path = tf.path();
+
                 // DESTINATION will capture the last positional parameter,
                 // but if --target was specified that value belongs in SOURCES
                 if (destination) options.source_paths.push_back(destination.value());
             }
-            else throw fs::filesystem_error{"main",
-                options.target_path, std::make_error_code(std::errc::not_a_directory)
-            };
+            else throw io::exception{"main", tf.path(), std::make_error_code(std::errc::not_a_directory)};
         }
         else
         {
@@ -145,7 +146,7 @@ try
 
     return exit_code;
 }
-catch (const fs::filesystem_error& e)
+catch (const io::exception& e)
 {
     std::print("{}: '{}'\n", e.code().message(), e.path1().string());
     return 1;
