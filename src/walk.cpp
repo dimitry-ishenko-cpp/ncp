@@ -5,7 +5,7 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
-#include "io_file.hpp"
+#include "file.hpp"
 #include "options.hpp"
 #include "state.hpp"
 
