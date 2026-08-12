@@ -15,6 +15,16 @@
 #include <ranges>
 
 ////////////////////////////////////////////////////////////////////////////////
+void create_directory(options& options, state& state, io::file& source, io::file& target, std::error_code& ec)
+{
+    io::attrib attr;
+    if (options.keep_group) attr.gid = source.gid();
+    if (options.keep_mode ) attr.mode= source.mode();
+    if (options.keep_user ) attr.uid = source.uid();
+
+    io::create_directory(target.path(), attr, ec);
+}
+
 void post_copy_file(options& options, state& state, asio::thread_pool& pool, io::file& source, io::file& target)
 {
     state.files_total.fetch_add(1, std::memory_order_relaxed);
@@ -33,6 +43,7 @@ void post_copy_file(options& options, state& state, asio::thread_pool& pool, io:
     });
 }
 
+////////////////////////////////////////////////////////////////////////////////
 std::generator<io::file> walk_dir(options& options, state& state, io::file& dir)
 {
     for (auto&& expected_path : io::directory_iterator(dir.path()))
@@ -86,7 +97,7 @@ void walk_one(options& options, state& state, asio::thread_pool& pool, io::file&
                 return;
             }
 
-            io::create_directory(target.path(), ec);
+            create_directory(options, state, source, target, ec);
             if (ec) { state.add_error(ec, target.path()); return; }
 
             for (auto&& source_child : walk_dir(options, state, source))
@@ -117,7 +128,7 @@ void walk_one(options& options, state& state, asio::thread_pool& pool, io::file&
 
                     if (source_child.is_directory())
                     {
-                        io::create_directory(target_child.path(), ec);
+                        create_directory(options, state, source_child, target_child, ec);
                         if (ec) state.add_error(ec, target_child.path());
                     }
                     else post_copy_file(options, state, pool, source_child, target_child);
