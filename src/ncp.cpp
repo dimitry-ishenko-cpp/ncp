@@ -234,7 +234,7 @@ void report_one(context& ctx, bool overwrite = true)
     auto bytes_total  = ctx.bytes_total.load(std::memory_order_relaxed);
     auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
 
-    auto percent_copied = bytes_total ? (100 * bytes_copied / bytes_total) : 0;
+    long percent_copied = bytes_total ? (100.0 * bytes_copied / bytes_total) : 0;
 
     constexpr auto bar_width = 40;
     auto bar_fill = percent_copied * bar_width / 100;
