@@ -75,7 +75,8 @@ public:
     auto time() const noexcept { return time_; }
     auto hardlink_count() const noexcept { return hardlink_count_; }
 
-    bool exists() const noexcept { return type_ != file_type::none && type_ != file_type::not_found; }
+    bool not_found() const noexcept { return type_ == file_type::not_found; }
+    bool exists() const noexcept { return !empty() && !not_found(); }
 
     bool is_regular_file() const noexcept { return type_ == file_type::regular;   }
     bool is_directory   () const noexcept { return type_ == file_type::directory; }
