@@ -11,6 +11,7 @@
 #include <expected>
 #include <filesystem>
 #include <generator>
+#include <optional>
 #include <system_error>
 
 #include <sys/types.h> // gid_t, uid_t
@@ -32,6 +33,13 @@ using gid = gid_t;
 
 struct follow_symlinks_t { explicit follow_symlinks_t() = default; };
 inline constexpr follow_symlinks_t follow_symlinks{};
+
+struct attrib
+{
+    std::optional<io::mode> mode;
+    std::optional<io::uid> uid;
+    std::optional<io::gid> gid;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 class file
@@ -84,12 +92,14 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(const file&, const path&, std::error_code&);
+void copy_file(const file&, const path&, const attrib&, std::error_code&);
+inline void copy_file(const file& source, const path& target, std::error_code& ec) { io::copy_file(source, target, {}, ec); }
 
-void create_directory(const path&, mode, std::error_code&);
-inline void create_directory(const path& path, std::error_code& ec) { create_directory(path, mode::all, ec); }
+void create_directory(const path&, const attrib&, std::error_code&);
+inline void create_directory(const path& path, std::error_code& ec) { io::create_directory(path, {}, ec); }
 
-void create_symlink(const path& to, const path& new_link, std::error_code&);
+void create_symlink(const path& to, const path& new_link, const attrib&, std::error_code&);
+inline void create_symlink(const path& to, const path& new_link, std::error_code& ec) { io::create_symlink(to, new_link, {}, ec); }
 
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
 

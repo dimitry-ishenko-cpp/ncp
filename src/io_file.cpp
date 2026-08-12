@@ -106,7 +106,7 @@ file file::follow_symlinks(std::error_code& ec) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(const file& source, const path& target_path, std::error_code& ec)
+void copy_file(const file& source, const path& target_path, const attrib& attr, std::error_code& ec)
 {
     struct auto_close
     {
@@ -193,30 +193,46 @@ void copy_file(const file& source, const path& target_path, std::error_code& ec)
         while (remain);
     }
 
-    ec.clear();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void create_directory(const path& path, mode mode, std::error_code& ec)
-{
-    if (::mkdir(path.c_str(), static_cast<::mode_t>(mode)))
-    {
-        if (errno == EEXIST)
-        {
-            struct stat st{};
-            if (!::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode)) ec.clear();
-            else ec = make_error_code(EEXIST);
-        }
-        else ec = make_error_code(errno);
-    }
+    if ((attr.uid || attr.gid) && ::fchown(out.fd, attr.uid.value_or(-1), attr.gid.value_or(-1)))
+        ec = make_error_code(errno);
+    else if (attr.mode && ::fchmod(out.fd, static_cast<::mode_t>(*attr.mode)))
+        ec = make_error_code(errno);
     else ec.clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void create_symlink(const path& to, const path& new_link, std::error_code& ec)
+void create_directory(const path& path, const attrib& attr, std::error_code& ec)
 {
-    if (!::symlink(to.c_str(), new_link.c_str())) ec.clear();
-    else ec = make_error_code(errno);
+    auto change_ownership = [](auto& path, auto& attr) {
+        return !(attr.uid || attr.gid) || 0 == ::chown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
+    };
+
+    auto mode = attr.mode ? static_cast<::mode_t>(*attr.mode) : 0777;
+    if (0 == ::mkdir(path.c_str(), mode))
+    {
+        if (change_ownership(path, attr)) { ec.clear(); return; }
+    }
+    else if (errno == EEXIST)
+    {
+        struct stat st{};
+        if (0 == ::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode))
+        {
+            if (change_ownership(path, attr)) { ec.clear(); return; }
+        }
+        else errno = EEXIST;
+    }
+
+    ec = make_error_code(errno);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void create_symlink(const path& to, const path& new_link, const attrib& attr, std::error_code& ec)
+{
+    if (::symlink(to.c_str(), new_link.c_str()))
+        ec = make_error_code(errno);
+    else if ((attr.gid || attr.uid) && ::lchown(new_link.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1)))
+        ec = make_error_code(errno);
+    else ec.clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
