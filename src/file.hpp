@@ -10,8 +10,10 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <generator>
 #include <optional>
+#include <string>
 #include <system_error>
 
 #include <sys/types.h> // gid_t, uid_t
@@ -108,5 +110,24 @@ void create_symlink(const path& to, const path& new_link, const attrib&, std::er
 inline void create_symlink(const path& to, const path& new_link, std::error_code& ec) { io::create_symlink(to, new_link, {}, ec); }
 
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+namespace std
+{
+
+template <>
+struct formatter<io::exception> : formatter<string>
+{
+    auto format(const io::exception& e, format_context& ctx) const
+    {
+        string out = e.code().message();
+        if (!e.path1().empty()) out += std::format(": {}", e.path1().string());
+        if (!e.path2().empty()) out += std::format(" => {}", e.path2().string());
+
+        return formatter<string>::format(out, ctx);
+    }
+};
 
 }
