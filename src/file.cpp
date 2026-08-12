@@ -106,7 +106,7 @@ file file::follow_symlinks(std::error_code& ec) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(const file& source, const path& target_path, const attrib& attr, std::error_code& ec)
+void copy_file(const file& source, const file& target, const attrib& attr, std::error_code& ec)
 {
     struct auto_close
     {
@@ -118,7 +118,7 @@ void copy_file(const file& source, const path& target_path, const attrib& attr, 
     auto_close in{ ::open(source.path().c_str(), O_RDONLY | O_CLOEXEC) };
     if (in.fd < 0) { ec = make_error_code(errno); return; }
 
-    auto_close out{ ::open(target_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
+    auto_close out{ ::open(target.path().c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
     if (out.fd < 0) { ec = make_error_code(errno); return; }
 
     auto remain = source.size();

@@ -100,8 +100,8 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(const file&, const path&, const attrib&, std::error_code&);
-inline void copy_file(const file& source, const path& target, std::error_code& ec) { io::copy_file(source, target, {}, ec); }
+void copy_file(const file&, const file&, const attrib&, std::error_code&);
+inline void copy_file(const file& source, const file& target, std::error_code& ec) { io::copy_file(source, target, {}, ec); }
 
 void create_directory(const path&, const attrib&, std::error_code&);
 inline void create_directory(const path& path, std::error_code& ec) { io::create_directory(path, {}, ec); }

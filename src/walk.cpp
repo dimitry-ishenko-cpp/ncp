@@ -43,8 +43,13 @@ void post_copy_file(options& options, state& state, asio::thread_pool& pool, io:
     {
         if (state.quit.load(std::memory_order_relaxed)) return;
 
+        io::attrib attr;
+        if (options.keep_group) attr.gid = source.gid();
+        if (options.keep_mode ) attr.mode= source.mode();
+        if (options.keep_user ) attr.uid = source.uid();
+
         std::error_code ec;
-        io::copy_file(source, target.path(), ec);
+        io::copy_file(source, target, attr, ec);
         if (ec) { state.add_error(ec, source.path(), target.path()); return; }
 
         state.files_copied.fetch_add(1, std::memory_order_relaxed);
