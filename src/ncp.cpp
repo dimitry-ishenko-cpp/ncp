@@ -15,8 +15,8 @@
 #include <exception>
 #include <format>
 #include <print>
-#include <ranges>
 #include <string>
+#include <vector>
 
 void show_usage(const pgm::args& args, const std::string& name);
 void show_version(const std::string& name);
@@ -34,7 +34,7 @@ extern "C" void signal_handler(int signal)
 void report_one(state&, bool overwrite = true);
 void report(state&);
 
-void walk_all(const options&, state&, asio::thread_pool&);
+void walk_all(options&, state&, asio::thread_pool&, std::vector<io::file>& sources, io::file& target);
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
@@ -77,31 +77,39 @@ try
     {
         options options;
 
-        auto&& sources = args["SOURCE"];
-        options.source_paths = std::ranges::to< decltype(options.source_paths) >(sources.values());
+        std::error_code ec;
+        std::vector<io::file> sources;
+        io::file target;
 
-        auto&& destination = args["DESTINATION"];
-        auto&& target = args["--target"];
-        if (target)
+        for (auto&& path : args["SOURCE"].values()) sources.emplace_back(path, ec);
+
+        if (args["DESTINATION"])
         {
-            std::error_code ec;
-            io::file tf{target.value(), io::follow_symlinks, ec};
-            if (ec) throw io::exception{"main", tf.path(), ec};
+            target = io::file{args["DESTINATION"].value(), ec};
+            if (ec) throw io::exception{"main", target.path(), ec};
+        }
 
-            if (tf.is_directory())
-            {
-                options.target_path = tf.path();
+        if (args["--target"])
+        {
+            // DESTINATION will capture the last positional parameter,
+            // but if --target was specified that value belongs in SOURCES
+            if (target) sources.push_back(std::move(target));
 
-                // DESTINATION will capture the last positional parameter,
-                // but if --target was specified that value belongs in SOURCES
-                if (destination) options.source_paths.push_back(destination.value());
-            }
-            else throw io::exception{"main", tf.path(), std::make_error_code(std::errc::not_a_directory)};
+            target = io::file{args["--target"].value(), io::follow_symlinks, ec};
+            if (ec) throw io::exception{"main", target.path(), ec};
+
+            if (!target.is_directory()) throw io::exception{
+                "main", target.path(), std::make_error_code(std::errc::not_a_directory)
+            };
         }
         else
         {
-            if (destination) options.target_path = destination.value();
-            else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
+            if (!target) throw pgm::missing_argument{
+                "neither DESTINATION nor --target was specified"
+            };
+
+            target = target.follow_symlinks(ec);
+            if (ec) throw io::exception{"main", target.path(), ec};
         }
 
         if (args["--group"]) options.keep_group = true;
@@ -113,8 +121,9 @@ try
         auto&& follow_links = args["--follow-links"];
         auto&& keep_links = args["--keep-links"];
 
-        if (follow_links && keep_links)
-            throw pgm::invalid_argument{"'--follow-links' and '--keep-links' are mutually exclusive"};
+        if (follow_links && keep_links) throw pgm::invalid_argument{
+            "'--follow-links' and '--keep-links' are mutually exclusive"
+        };
 
         if (follow_links) options.keep_links = false;
         else if (keep_links) options.keep_links = true;
@@ -132,7 +141,7 @@ try
         std::signal(SIGTERM, signal_handler);
 
         auto report_task = std::async(std::launch::async, report, std::ref(state));
-        walk_all(options, state, pool);
+        walk_all(options, state, pool, sources, target);
 
         pool.join();
 
@@ -148,7 +157,7 @@ try
 }
 catch (const io::exception& e)
 {
-    std::print("{}: '{}'\n", e.code().message(), e.path1().string());
+    std::print("{}\n", e);
     return 1;
 }
 catch (const std::exception& e)

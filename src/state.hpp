@@ -31,13 +31,8 @@ struct state
         errors.push_back(std::move(msg));
         ++error_count;
     }
-    void add_error(const std::string& msg, const io::path& path) {
-        add_error(std::format("{}: '{}'", msg, path.string()));
-    }
-    void add_error(std::string msg, const io::path& path, const io::path& path_to) {
-        add_error(std::format("{}: '{}' => '{}'", msg, path.string(), path_to.string()));
-    }
-    void add_error(std::error_code ec, const auto&... path) { add_error(ec.message(), path...); }
+    void add_error(const std::string& msg, const io::path& path) { add_error(std::format("{}: '{}'", msg, path.string())); }
+    void add_error(std::error_code ec, const auto&... path) { add_error(std::format("{}", io::exception{"", path..., ec})); }
     void add_error(std::errc cond, const auto&... path) { add_error(std::make_error_code(cond), path...); }
 
     auto drain_errors()

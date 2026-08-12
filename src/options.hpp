@@ -7,15 +7,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "file.hpp"
-#include <vector>
-
-////////////////////////////////////////////////////////////////////////////////
 struct options
 {
-    std::vector<io::path> source_paths;
-    io::path target_path;
-
     bool keep_group = false, keep_user = false;
     bool keep_mode = false;
 

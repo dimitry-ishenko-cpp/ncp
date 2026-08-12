@@ -15,62 +15,58 @@
 #include <ranges>
 
 ////////////////////////////////////////////////////////////////////////////////
-void post_copy_file(const options& options, state& state, asio::thread_pool& pool, const io::file& source, const io::path& target_path)
+void post_copy_file(options& options, state& state, asio::thread_pool& pool, io::file& source, io::file& target)
 {
     state.files_total.fetch_add(1, std::memory_order_relaxed);
     state.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
 
-    asio::post(pool, [&options, &state, source, target_path]
+    asio::post(pool, [&options, &state, source = std::move(source), target = std::move(target)]
     {
         if (state.quit.load(std::memory_order_relaxed)) return;
 
         std::error_code ec;
-        io::copy_file(source, target_path, ec);
-        if (ec) { state.add_error(ec, source.path(), target_path); return; }
+        io::copy_file(source, target.path(), ec);
+        if (ec) { state.add_error(ec, source.path(), target.path()); return; }
 
         state.files_copied.fetch_add(1, std::memory_order_relaxed);
         state.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
     });
 }
 
-std::generator<io::file> walk_dir(const options& options, state& state, io::path dir)
+std::generator<io::file> walk_dir(options& options, state& state, io::file& dir)
 {
-    for (auto&& expected_path : io::directory_iterator(dir))
+    for (auto&& expected_path : io::directory_iterator(dir.path()))
         if (expected_path)
         {
             std::error_code ec;
-            io::file child{ *expected_path, ec };
+            io::file child{*expected_path, ec};
             if (ec) { state.add_error(ec, *expected_path); continue; }
 
             co_yield child;
 
             if (child.is_symlink() && !options.keep_links)
             {
-                std::error_code ec;
                 child = child.follow_symlinks(ec);
                 if (ec) { state.add_error(ec, child.path()); continue; }
             }
 
             if (child.is_directory())
-                co_yield std::ranges::elements_of( walk_dir(options, state, child.path()) );
+                co_yield std::ranges::elements_of( walk_dir(options, state, child) );
         }
         else state.add_error(expected_path.error());
 }
 
-void walk_one(const options& options, state& state, asio::thread_pool& pool, const io::path& source_path, const io::path& target_path)
+void walk_one(options& options, state& state, asio::thread_pool& pool, io::file& source, io::file& target)
 {
     std::error_code ec;
-    io::file source{ source_path, ec };
-    if (ec) { state.add_error(ec, source_path); return; }
 
     if (source.is_symlink() && options.keep_links)
     {
-        std::error_code ec;
         auto link_target = source.get_target_path(ec);
         if (!ec)
         {
-            io::create_symlink(link_target, target_path, ec);
-            if (ec) state.add_error(ec, link_target, target_path);
+            io::create_symlink(link_target, target.path(), ec);
+            if (ec) state.add_error(ec, link_target, target.path());
         }
         else state.add_error(ec, source.path());
     }
@@ -78,7 +74,6 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
     {
         if (source.is_symlink())
         {
-            std::error_code ec;
             source = source.follow_symlinks(ec);
             if (ec) { state.add_error(ec, source.path()); return; }
         }
@@ -87,28 +82,28 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
         {
             if (!options.recursive)
             {
-                state.add_error("Skipping directory", source_path);
+                state.add_error("Skipping directory", source.path());
                 return;
             }
 
-            std::error_code ec;
-            io::create_directory(target_path, ec);
-            if (ec) { state.add_error(ec, target_path); return; }
+            io::create_directory(target.path(), ec);
+            if (ec) { state.add_error(ec, target.path()); return; }
 
-            for (auto&& source_child : walk_dir(options, state, source_path))
+            for (auto&& source_child : walk_dir(options, state, source))
             {
                 if (state.quit.load(std::memory_order_relaxed)) break;
 
-                auto target_child_path = target_path / source_child.path().lexically_relative(source_path);
+                auto name = source_child.path().lexically_relative(source.path());
+                io::file target_child{ target.path() / name, ec };
+                if (ec) { state.add_error(ec, target_child.path()); continue; }
 
                 if (source_child.is_symlink() && options.keep_links)
                 {
-                    std::error_code ec;
                     auto link_target = source_child.get_target_path(ec);
                     if (!ec)
                     {
-                        io::create_symlink(link_target, target_child_path, ec);
-                        if (ec) state.add_error(ec, link_target, target_child_path);
+                        io::create_symlink(link_target, target_child.path(), ec);
+                        if (ec) state.add_error(ec, link_target, target_child.path());
                     }
                     else state.add_error(ec, source_child.path());
                 }
@@ -116,46 +111,46 @@ void walk_one(const options& options, state& state, asio::thread_pool& pool, con
                 {
                     if (source_child.is_symlink())
                     {
-                        std::error_code ec;
                         source_child = source_child.follow_symlinks(ec);
                         if (ec) { state.add_error(ec, source_child.path()); continue; }
                     }
 
                     if (source_child.is_directory())
                     {
-                        std::error_code ec;
-                        io::create_directory(target_child_path, ec);
-                        if (ec) state.add_error(ec, target_child_path);
+                        io::create_directory(target_child.path(), ec);
+                        if (ec) state.add_error(ec, target_child.path());
                     }
-                    else post_copy_file(options, state, pool, source_child, target_child_path);
+                    else post_copy_file(options, state, pool, source_child, target_child);
                 }
             }
         }
-        else post_copy_file(options, state, pool, source, target_path);
+        else post_copy_file(options, state, pool, source, target);
     }
 }
 
-void walk_all(const options& options, state& state, asio::thread_pool& pool)
+void walk_all(options& options, state& state, asio::thread_pool& pool, std::vector<io::file>& sources, io::file& target)
 {
-    std::error_code ec;
-    io::file target{ options.target_path, ec };
-    if (ec) { state.add_error(ec, options.target_path); return; }
-
     if (target.is_directory())
     {
-        for (auto&& source_path : options.source_paths)
+        for (auto&& source : sources)
         {
             if (state.quit.load(std::memory_order_relaxed)) break;
 
-            auto trailing_slash = !source_path.has_filename();
-            auto target_path = trailing_slash ? options.target_path : options.target_path / source_path.filename();
+            if (source.path().has_filename()) // trailing_slash
+            {
+                std::error_code ec;
+                target = io::file{target.path() / source.path().filename(), io::follow_symlinks, ec};
+                if (ec) throw io::exception{"walk_all", target.path(), ec};
+            }
 
-            walk_one(options, state, pool, source_path, target_path);
+            walk_one(options, state, pool, source, target);
         }
     }
-    else if (options.source_paths.size() == 1)
+    else if (sources.size() == 1)
     {
-        walk_one(options, state, pool, options.source_paths.front(), options.target_path);
+        walk_one(options, state, pool, sources.front(), target);
     }
-    else state.add_error(std::errc::not_a_directory, options.target_path);
+    else throw io::exception{"main",
+        target.path(), std::make_error_code(std::errc::not_a_directory)
+    };
 }
