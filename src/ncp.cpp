@@ -47,15 +47,19 @@ try
 
     pgm::args args
     {
-        { "-h", "--help",           "Show this help screen and exit."   },
-        { "-L", "--follow-links",   "Dereference symbolic links."       },
-        { "-P", "--keep-links",     "Preserve symbolic links."          },
-        { "-r", "--recursive",      "Copy directories recursively."     },
-        { "-t", "--target", "dir",  "Directory to copy/move into."      },
-        { "-v", "--version",        "Show program version and exit."    },
+        { "-g", "--group",          "Preserve group ownership."                 },
+        { "-h", "--help",           "Show this help message and exit."          },
+        { "-L", "--follow-links",   "Dereference symbolic links (default in non-recursive mode)." },
+        { "-m", "--mode",           "Preserve file permissions (ie, mode bits)."},
+        { "-o", "--ownership",      "Preserve user and group ownership (same as -ug)." },
+        { "-P", "--keep-links",     "Preserve symbolic links (default in recursive mode)." },
+        { "-r", "--recursive",      "Copy directories recursively."             },
+        { "-t", "--target", "dir",  "Target directory to copy/move into."       },
+        { "-u", "--user",           "Preserve user ownership."                  },
+        { "-v", "--version",        "Show program version and exit."            },
 
-        { "SOURCE", pgm::mul,       "Files/directories to copy or move."},
-        { "DESTINATION", pgm::opt,  "Destination file or directory."    },
+        { "SOURCE", pgm::mul,       "Files or directories to copy or move."     },
+        { "DESTINATION", pgm::opt,  "Destination file or directory."            },
     };
 
     std::exception_ptr ep;
@@ -99,7 +103,9 @@ try
             else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
         }
 
-        options.recursive = !!args["--recursive"];
+        if (args["--group"]) options.keep_group = true;
+
+        if (args["--recursive"]) options.recursive = true;
         // keep symlinks in recursive mode by default
         options.keep_links = options.recursive;
 
@@ -111,6 +117,10 @@ try
 
         if (follow_links) options.keep_links = false;
         else if (keep_links) options.keep_links = true;
+
+        if (args["--mode"]) options.keep_mode = true;
+        if (args["--ownership"]) options.keep_group = options.keep_user = true;
+        if (args["--user"]) options.keep_user = true;
 
         ////////////////////
         asio::thread_pool pool{1};
