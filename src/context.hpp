@@ -28,9 +28,10 @@ struct context
 
     ////////////////////
     std::atomic<bool> quit{ false };
+    std::atomic<int> signal{0};
 
-    std::atomic<long> files_total, files_copied;
-    std::atomic<long> bytes_total, bytes_copied;
+    std::atomic<long> files_total{0}, files_copied{0};
+    std::atomic<long> bytes_total{0}, bytes_copied{0};
 
     void add_error(std::string msg)
     {

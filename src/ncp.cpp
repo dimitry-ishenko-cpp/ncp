@@ -42,7 +42,7 @@ extern "C" void signal_handler(int signal)
 {
     if (pctx)
     {
-        pctx->add_error(std::format("Received signal {}, exiting...", signal));
+        pctx->signal = signal;
         pctx->quit = true;
     }
 }
@@ -218,7 +218,7 @@ void walk_all(context& ctx, asio::thread_pool& pool, std::vector<io::file> sourc
 auto human(long bytes)
 {
     constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
-    
+
     auto n = 0;
     auto dbl_bytes = static_cast<double>(bytes);
     for (; dbl_bytes >= 1024.0 && n < units.size() - 1; ++n) dbl_bytes /= 1024.0;
@@ -229,7 +229,11 @@ auto human(long bytes)
 void report_one(context& ctx, bool overwrite = true)
 {
     if (overwrite) std::print("\033[{}F\033[K", 1);
-    for (auto&& error : ctx.drain_errors()) print("{}\n", error);
+
+    if (int signal = ctx.signal.exchange(0))
+        std::print("Received signal {}, exiting...\n", signal);
+
+    for (auto&& error : ctx.drain_errors()) std::print("{}\n", error);
 
     auto files_total  = ctx.files_total.load(std::memory_order_relaxed);
     auto files_copied = ctx.files_copied.load(std::memory_order_relaxed);
