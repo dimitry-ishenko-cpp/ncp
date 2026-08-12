@@ -51,8 +51,8 @@ class file
     io::file_type type_ = file_type::none;
     io::file_size size_ = 0;
     io::mode mode_ = mode::unknown;
-    io::uid uid_ = 0;
-    io::gid gid_ = 0;
+    io::uid uid_ = -1;
+    io::gid gid_ = -1;
     io::time time_{};
     io::hardlink_count hardlink_count_ = 0;
 
