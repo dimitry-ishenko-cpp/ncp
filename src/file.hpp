@@ -61,6 +61,9 @@ public:
     file(io::path path, std::error_code& ec) noexcept : file{std::move(path), false, ec} { }
     file(io::path path, follow_symlinks_t, std::error_code& ec) noexcept : file{std::move(path), true, ec} { }
 
+    bool empty() const noexcept { return type_ == file_type::none; }
+    void clear() noexcept { *this = file{}; }
+
     auto& path() const noexcept { return  path_; }
 
     auto type() const noexcept { return type_; }
