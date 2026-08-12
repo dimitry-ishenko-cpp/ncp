@@ -100,13 +100,13 @@ std::generator<io::file> walk_dir(context& ctx, const io::file& dir)
             io::file child{*expected_path, ec};
             if (ec) { ctx.add_error(ec, *expected_path); continue; }
 
-            co_yield child;
-
             if (child.is_symlink() && !ctx.keep_links)
             {
                 child = child.follow_symlinks(ec);
                 if (ec) { ctx.add_error(ec, child.path()); continue; }
             }
+
+            co_yield child;
 
             if (child.is_directory())
                 co_yield std::ranges::elements_of( walk_dir(ctx, child) );
@@ -167,12 +167,6 @@ void walk_one(context& ctx, asio::thread_pool& pool, io::file source, io::file t
                 }
                 else
                 {
-                    if (source_child.is_symlink())
-                    {
-                        source_child = source_child.follow_symlinks(ec);
-                        if (ec) { ctx.add_error(ec, source_child.path()); continue; }
-                    }
-
                     if (source_child.is_directory())
                     {
                         create_directory(ctx, source_child, target_child, ec);
@@ -286,6 +280,8 @@ try
         { "-r", "--recursive",      "Copy directories recursively."             },
         { "-t", "--target", "dir",  "Target directory to copy/move into."       },
         { "-u", "--user",           "Preserve user ownership."                  },
+        { "-U", "--update", "when", "When to update existing files. <when> can be one one of:\n"
+                                    "'all' (default), 'none', 'older', 'changed' or 'size'." },
         { "-v", "--version",        "Show program version and exit."            },
 
         { "SOURCE", pgm::mul,       "Files or directories to copy or move."     },
