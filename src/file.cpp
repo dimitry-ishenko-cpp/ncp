@@ -203,21 +203,23 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 ////////////////////////////////////////////////////////////////////////////////
 void create_directory(const path& path, const attrib& attr, std::error_code& ec)
 {
-    auto change_ownership = [](auto& path, auto& attr) {
+    auto chown_ = [](auto& path, auto& attr) {
         return !(attr.uid || attr.gid) || 0 == ::chown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
     };
+    auto chmod_ = [](auto& path, auto& attr) {
+        return !attr.mode || 0 == ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode));
+    };
 
-    auto mode = attr.mode ? static_cast<::mode_t>(*attr.mode) : 0777;
-    if (0 == ::mkdir(path.c_str(), mode))
+    if (0 == ::mkdir(path.c_str(), 0777))
     {
-        if (change_ownership(path, attr)) { ec.clear(); return; }
+        if (chown_(path, attr) && chmod_(path, attr)) { ec.clear(); return; }
     }
     else if (errno == EEXIST)
     {
         struct stat st{};
         if (0 == ::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode))
         {
-            if (change_ownership(path, attr)) { ec.clear(); return; }
+            if (chown_(path, attr) && chmod_(path, attr)) { ec.clear(); return; }
         }
         else errno = EEXIST;
     }
