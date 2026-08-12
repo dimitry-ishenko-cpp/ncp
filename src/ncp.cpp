@@ -18,8 +18,19 @@
 #include <string>
 #include <vector>
 
-void show_usage(const pgm::args& args, const std::string& name);
-void show_version(const std::string& name);
+////////////////////////////////////////////////////////////////////////////////
+void show_usage(const pgm::args& args, const std::string& name)
+{
+    auto preamble = R"(
+ncp – new and improved, now asbestos-free copy utility.)";
+
+    std::print("{}\n", args.usage(name, preamble));
+}
+
+void show_version(const std::string& name)
+{
+    std::print("{} version {}\n", name, VERSION);
+}
 
 state* state_ptr = nullptr;
 extern "C" void signal_handler(int signal)
@@ -165,17 +176,3 @@ catch (const std::exception& e)
     std::print("{}\n", e.what());
     return 1;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-void show_usage(const pgm::args& args, const std::string& name)
-{
-    auto preamble = R"(
-ncp – new and improved, now asbestos-free copy utility.)";
-
-    std::print("{}\n", args.usage(name, preamble));
-}
-
-void show_version(const std::string& name)
-{
-    std::print("{} version {}\n", name, VERSION);
-}
