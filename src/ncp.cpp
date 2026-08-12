@@ -194,21 +194,22 @@ void walk_all(context& ctx, asio::thread_pool& pool, std::vector<io::file> sourc
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
+            auto target_ = target;
             if (source.path().has_filename()) // trailing_slash
             {
                 std::error_code ec;
-                target = io::file{target.path() / source.path().filename(), io::follow_symlinks, ec};
-                if (ec) throw io::exception{"walk_all", target.path(), ec};
+                target_ = io::file{target.path() / source.path().filename(), io::follow_symlinks, ec};
+                if (ec) throw io::exception{"walk_all", target_.path(), ec};
             }
 
-            walk_one(ctx, pool, source, target);
+            walk_one(ctx, pool, source, std::move(target_));
         }
     }
     else if (sources.size() == 1)
     {
         walk_one(ctx, pool, sources.front(), target);
     }
-    else throw io::exception{"main",
+    else throw io::exception{"walk_all",
         target.path(), std::make_error_code(std::errc::not_a_directory)
     };
 }
