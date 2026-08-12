@@ -7,16 +7,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include <filesystem>
+#include "file.hpp"
 #include <vector>
-
-namespace fs = std::filesystem;
 
 ////////////////////////////////////////////////////////////////////////////////
 struct options
 {
-    std::vector<fs::path> source_paths;
-    fs::path target_path;
+    std::vector<io::path> source_paths;
+    io::path target_path;
 
     bool recursive = false;
     bool keep_links = false;
