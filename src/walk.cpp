@@ -25,6 +25,15 @@ void create_directory(options& options, state& state, io::file& source, io::file
     io::create_directory(target.path(), attr, ec);
 }
 
+void create_symlink(options& options, state& state, io::path& to, io::file& source, io::file& target, std::error_code& ec)
+{
+    io::attrib attr;
+    if (options.keep_group) attr.gid = source.gid();
+    if (options.keep_user ) attr.uid = source.uid();
+
+    io::create_symlink(to, target.path(), attr, ec);
+}
+
 void post_copy_file(options& options, state& state, asio::thread_pool& pool, io::file& source, io::file& target)
 {
     state.files_total.fetch_add(1, std::memory_order_relaxed);
@@ -76,7 +85,7 @@ void walk_one(options& options, state& state, asio::thread_pool& pool, io::file&
         auto link_target = source.get_target_path(ec);
         if (!ec)
         {
-            io::create_symlink(link_target, target.path(), ec);
+            create_symlink(options, state, link_target, source, target, ec);
             if (ec) state.add_error(ec, link_target, target.path());
         }
         else state.add_error(ec, source.path());
@@ -113,7 +122,7 @@ void walk_one(options& options, state& state, asio::thread_pool& pool, io::file&
                     auto link_target = source_child.get_target_path(ec);
                     if (!ec)
                     {
-                        io::create_symlink(link_target, target_child.path(), ec);
+                        create_symlink(options, state, link_target, source_child, target_child, ec);
                         if (ec) state.add_error(ec, link_target, target_child.path());
                     }
                     else state.add_error(ec, source_child.path());
