@@ -18,6 +18,6 @@ struct options
     std::vector<fs::path> source_paths;
     fs::path target_path;
 
-    bool recursive;
-    bool keep_links;
+    bool recursive = false;
+    bool keep_links = false;
 };
