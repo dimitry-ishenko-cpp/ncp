@@ -279,10 +279,10 @@ try
     {
         { "-g", "--group",          "Preserve group ownership."                 },
         { "-h", "--help",           "Show this help message and exit."          },
-        { "-L", "--follow-links",   "Dereference symbolic links (default in non-recursive mode)." },
+        { "-L", "--follow-links",   "Dereference symbolic links (default when non-recursive)." },
         { "-m", "--mode",           "Preserve file permissions (ie, mode bits)."},
         { "-o", "--ownership",      "Preserve user and group ownership (same as -ug)." },
-        { "-P", "--keep-links",     "Preserve symbolic links (default in recursive mode)." },
+        { "-P", "--keep-links",     "Preserve symbolic links (default when recursive)." },
         { "-r", "--recursive",      "Copy directories recursively."             },
         { "-t", "--target", "dir",  "Target directory to copy/move into."       },
         { "-u", "--user",           "Preserve user ownership."                  },
