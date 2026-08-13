@@ -203,10 +203,10 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 ////////////////////////////////////////////////////////////////////////////////
 void create_directory(const path& path, const attrib& attr, std::error_code& ec)
 {
-    auto chown_ = [](auto& path, auto& attr) {
+    auto chown_ = [](auto&& path, auto&& attr) {
         return !(attr.uid || attr.gid) || 0 == ::chown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
     };
-    auto chmod_ = [](auto& path, auto& attr) {
+    auto chmod_ = [](auto&& path, auto&& attr) {
         return !attr.mode || 0 == ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode));
     };
 
