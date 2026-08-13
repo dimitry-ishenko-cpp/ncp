@@ -67,27 +67,34 @@ void create_symlink(context& ctx, const io::path& to, const io::file& source, co
     io::create_symlink(to, target.path(), attr, ec);
 }
 
-void post_copy_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+void copy_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
-    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
-    ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
-
-    asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+    if (source.is_special())
+        ctx.add_error("Skipping special file", source.path());
+    else if (source.is_device())
+        ctx.add_error("Skipping device file", source.path());
+    else
     {
-        if (ctx.quit.load(std::memory_order_relaxed)) return;
+        ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+        ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
 
-        io::attrib attr;
-        if (ctx.keep_group) attr.gid = source.gid();
-        if (ctx.keep_mode ) attr.mode= source.mode();
-        if (ctx.keep_user ) attr.uid = source.uid();
+        asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+        {
+            if (ctx.quit.load(std::memory_order_relaxed)) return;
 
-        std::error_code ec;
-        io::copy_file(source, target, attr, ec);
-        if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
+            io::attrib attr;
+            if (ctx.keep_group) attr.gid = source.gid();
+            if (ctx.keep_mode ) attr.mode= source.mode();
+            if (ctx.keep_user ) attr.uid = source.uid();
 
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-        ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-    });
+            std::error_code ec;
+            io::copy_file(source, target, attr, ec);
+            if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
+
+            ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+            ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
+        });
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -172,11 +179,11 @@ void walk_one(context& ctx, asio::thread_pool& pool, io::file source, io::file t
                         create_directory(ctx, source_child, target_child, ec);
                         if (ec) ctx.add_error(ec, target_child.path());
                     }
-                    else post_copy_file(ctx, pool, std::move(source_child), std::move(target_child));
+                    else copy_file(ctx, pool, std::move(source_child), std::move(target_child));
                 }
             }
         }
-        else post_copy_file(ctx, pool, std::move(source), std::move(target));
+        else copy_file(ctx, pool, std::move(source), std::move(target));
     }
 }
 
