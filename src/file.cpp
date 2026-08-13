@@ -83,6 +83,7 @@ path file::get_target_path(std::error_code& ec) const
         }
         else if (len < buf.size())
         {
+            ec.clear();
             buf.resize(len);
             return buf;
         }
