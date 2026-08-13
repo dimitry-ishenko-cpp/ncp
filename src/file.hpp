@@ -88,8 +88,9 @@ public:
     bool is_fifo        () const noexcept { return type_ == file_type::fifo;      }
     bool is_socket      () const noexcept { return type_ == file_type::socket;    }
 
-    bool is_standard    () const noexcept { return is_regular_file() || is_directory()   || is_symlink(); }
-    bool is_special     () const noexcept { return is_block_device() || is_char_device() || is_fifo() || is_socket(); }
+    bool is_standard    () const noexcept { return is_regular_file() || is_directory() || is_symlink(); }
+    bool is_device      () const noexcept { return is_block_device() || is_char_device(); }
+    bool is_special     () const noexcept { return is_fifo() || is_socket(); }
 
     ////////////////////
     file follow_symlinks(std::error_code&) const;
