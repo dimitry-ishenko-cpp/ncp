@@ -48,46 +48,69 @@ extern "C" void signal_handler(int signal)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void create_directory(context& ctx, const io::file& source, const io::file& target, std::error_code& ec)
+void copy_any(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
-    io::attrib attr;
-    if (ctx.keep_group) attr.gid = source.gid();
-    if (ctx.keep_mode ) attr.mode= source.mode();
-    if (ctx.keep_user ) attr.uid = source.uid();
-
-    io::create_directory(target.path(), attr, ec);
-}
-
-void create_symlink(context& ctx, const io::path& to, const io::file& source, const io::file& target, std::error_code& ec)
-{
-    io::attrib attr;
-    if (ctx.keep_group) attr.gid = source.gid();
-    if (ctx.keep_user ) attr.uid = source.uid();
-
-    io::create_symlink(to, target.path(), attr, ec);
-}
-
-void post_copy_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
-{
-    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
-    ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
-
-    asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+    if (source.is_directory())
     {
-        if (ctx.quit.load(std::memory_order_relaxed)) return;
-
         io::attrib attr;
         if (ctx.keep_group) attr.gid = source.gid();
         if (ctx.keep_mode ) attr.mode= source.mode();
         if (ctx.keep_user ) attr.uid = source.uid();
 
-        std::error_code ec;
-        io::copy_file(source, target, attr, ec);
-        if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
+        io::create_directory(target.path(), attr, ec);
+        if (ec) ctx.add_error(ec, target.path());
+    }
+    ////////////////////
+    else if (source.is_symlink())
+    {
+        auto link_target = source.get_target_path(ec);
+        if (!ec)
+        {
+            io::attrib attr;
+            if (ctx.keep_group) attr.gid = source.gid();
+            if (ctx.keep_user ) attr.uid = source.uid();
 
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-        ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-    });
+            io::create_symlink(link_target, target.path(), attr, ec);
+            if (ec) ctx.add_error(ec, link_target, target.path());
+        }
+        else ctx.add_error(ec, source.path());
+    }
+    ////////////////////
+    else if (source.is_regular_file())
+    {
+        ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+        ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
+
+        asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+        {
+            if (ctx.quit.load(std::memory_order_relaxed)) return;
+
+            io::attrib attr;
+            if (ctx.keep_group) attr.gid = source.gid();
+            if (ctx.keep_mode ) attr.mode= source.mode();
+            if (ctx.keep_user ) attr.uid = source.uid();
+
+            std::error_code ec;
+            io::copy_file(source, target, attr, ec);
+            if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
+
+            ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+            ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
+        });
+
+        ec.clear();
+    }
+    ////////////////////
+    else if (!source.exists())
+    {
+        ctx.add_error("Source does not exist", source.path());
+        ec = std::make_error_code(std::errc::no_such_file_or_directory);
+    }
+    else
+    {
+        ctx.add_error("Skipping unknown file", source.path());
+        ec = std::make_error_code(std::errc::not_supported);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,68 +139,33 @@ std::generator<io::file> walk_dir(context& ctx, const io::file& dir)
 
 void walk_one(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
+    if (source.is_symlink() && !ctx.keep_links)
+    {
+        std::error_code ec;
+        source = source.follow_symlinks(ec);
+        if (ec) { ctx.add_error(ec, source.path()); return; }
+    }
+
+    if (source.is_directory() && !ctx.recursive)
+    {
+        ctx.add_error("Skipping directory", source.path());
+        return;
+    }
+
     std::error_code ec;
+    copy_any(ctx, pool, source, target, ec);
 
-    if (source.is_symlink() && ctx.keep_links)
-    {
-        auto link_target = source.get_target_path(ec);
-        if (!ec)
+    if (!ec && source.is_directory())
+        for (auto&& source_child : walk_dir(ctx, source))
         {
-            create_symlink(ctx, link_target, source, target, ec);
-            if (ec) ctx.add_error(ec, link_target, target.path());
+            if (ctx.quit.load(std::memory_order_relaxed)) break;
+
+            auto name = source_child.path().lexically_relative(source.path());
+            io::file target_child{ target.path() / name, ec };
+
+            if (ec) ctx.add_error(ec, target_child.path());
+            else copy_any(ctx, pool, std::move(source_child), std::move(target_child), ec);
         }
-        else ctx.add_error(ec, source.path());
-    }
-    else
-    {
-        if (source.is_symlink())
-        {
-            source = source.follow_symlinks(ec);
-            if (ec) { ctx.add_error(ec, source.path()); return; }
-        }
-
-        if (source.is_directory())
-        {
-            if (!ctx.recursive)
-            {
-                ctx.add_error("Skipping directory", source.path());
-                return;
-            }
-
-            create_directory(ctx, source, target, ec);
-            if (ec) { ctx.add_error(ec, target.path()); return; }
-
-            for (auto&& source_child : walk_dir(ctx, source))
-            {
-                if (ctx.quit.load(std::memory_order_relaxed)) break;
-
-                auto name = source_child.path().lexically_relative(source.path());
-                io::file target_child{ target.path() / name, ec };
-                if (ec) { ctx.add_error(ec, target_child.path()); continue; }
-
-                if (source_child.is_symlink() && ctx.keep_links)
-                {
-                    auto link_target = source_child.get_target_path(ec);
-                    if (!ec)
-                    {
-                        create_symlink(ctx, link_target, source_child, target_child, ec);
-                        if (ec) ctx.add_error(ec, link_target, target_child.path());
-                    }
-                    else ctx.add_error(ec, source_child.path());
-                }
-                else
-                {
-                    if (source_child.is_directory())
-                    {
-                        create_directory(ctx, source_child, target_child, ec);
-                        if (ec) ctx.add_error(ec, target_child.path());
-                    }
-                    else post_copy_file(ctx, pool, std::move(source_child), std::move(target_child));
-                }
-            }
-        }
-        else post_copy_file(ctx, pool, std::move(source), std::move(target));
-    }
 }
 
 void walk_all(context& ctx, asio::thread_pool& pool, std::vector<io::file> sources, io::file target)
