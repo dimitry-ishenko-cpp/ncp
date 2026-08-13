@@ -172,15 +172,12 @@ void walk_one(context& ctx, asio::thread_pool& pool, io::file source, io::file t
                     }
                     else ctx.add_error(ec, source_child.path());
                 }
-                else
+                else if (source_child.is_directory())
                 {
-                    if (source_child.is_directory())
-                    {
-                        create_directory(ctx, source_child, target_child, ec);
-                        if (ec) ctx.add_error(ec, target_child.path());
-                    }
-                    else copy_file(ctx, pool, std::move(source_child), std::move(target_child));
+                    create_directory(ctx, source_child, target_child, ec);
+                    if (ec) ctx.add_error(ec, target_child.path());
                 }
+                else copy_file(ctx, pool, std::move(source_child), std::move(target_child));
             }
         }
         else copy_file(ctx, pool, std::move(source), std::move(target));
