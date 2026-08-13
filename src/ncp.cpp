@@ -48,7 +48,7 @@ extern "C" void signal_handler(int signal)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_any(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
     if (source.is_directory())
     {
@@ -114,7 +114,7 @@ void copy_any(context& ctx, asio::thread_pool& pool, io::file source, io::file t
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::generator<io::file> walk_dir(context& ctx, const io::file& dir)
+std::generator<io::file> walk_tree(context& ctx, const io::file& dir)
 {
     for (auto&& expected_path : io::directory_iterator(dir.path()))
         if (expected_path)
@@ -132,12 +132,12 @@ std::generator<io::file> walk_dir(context& ctx, const io::file& dir)
             co_yield child;
 
             if (child.is_directory())
-                co_yield std::ranges::elements_of( walk_dir(ctx, child) );
+                co_yield std::ranges::elements_of( walk_tree(ctx, child) );
         }
         else ctx.add_error(expected_path.error());
 }
 
-void walk_one(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
     if (source.is_symlink() && !ctx.keep_links)
     {
@@ -153,10 +153,10 @@ void walk_one(context& ctx, asio::thread_pool& pool, io::file source, io::file t
     }
 
     std::error_code ec;
-    copy_any(ctx, pool, source, target, ec);
+    copy_entry(ctx, pool, source, target, ec);
 
     if (!ec && source.is_directory())
-        for (auto&& source_child : walk_dir(ctx, source))
+        for (auto&& source_child : walk_tree(ctx, source))
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
@@ -164,11 +164,11 @@ void walk_one(context& ctx, asio::thread_pool& pool, io::file source, io::file t
             io::file target_child{ target.path() / name, ec };
 
             if (ec) ctx.add_error(ec, target_child.path());
-            else copy_any(ctx, pool, std::move(source_child), std::move(target_child), ec);
+            else copy_entry(ctx, pool, std::move(source_child), std::move(target_child), ec);
         }
 }
 
-void walk_all(context& ctx, asio::thread_pool& pool, std::vector<io::file> sources, io::file target)
+void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> sources, io::file target)
 {
     if (target.is_directory())
     {
@@ -184,12 +184,12 @@ void walk_all(context& ctx, asio::thread_pool& pool, std::vector<io::file> sourc
                 if (ec) throw io::exception{"walk_all", target_.path(), ec};
             }
 
-            walk_one(ctx, pool, source, std::move(target_));
+            copy_source(ctx, pool, std::move(source), std::move(target_));
         }
     }
     else if (sources.size() == 1)
     {
-        walk_one(ctx, pool, sources.front(), target);
+        copy_source(ctx, pool, std::move(sources.front()), std::move(target));
     }
     else throw io::exception{"walk_all",
         target.path(), std::make_error_code(std::errc::not_a_directory)
@@ -208,7 +208,7 @@ auto human(long bytes)
     return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
 }
 
-void report_one(context& ctx, bool overwrite = true)
+void print_status(context& ctx, bool overwrite = true)
 {
     if (overwrite) std::print("\033[{}F\033[K", 1);
 
@@ -236,14 +236,14 @@ void report_one(context& ctx, bool overwrite = true)
     std::fflush(stdout);
 }
 
-void report(context& ctx)
+void report_status(context& ctx)
 {
     bool overwrite = false;
     do
     {
         std::this_thread::sleep_for(100ms);
 
-        report_one(ctx, overwrite);
+        print_status(ctx, overwrite);
         overwrite = true;
     }
     while (!ctx.quit.load(std::memory_order_relaxed));
@@ -355,16 +355,16 @@ try
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
-        auto report_task = std::async(std::launch::async, report, std::ref(ctx));
-        walk_all(ctx, pool, std::move(sources), std::move(target));
+        auto status_task = std::async(std::launch::async, report_status, std::ref(ctx));
+        copy_sources(ctx, pool, std::move(sources), std::move(target));
 
         pool.join();
 
         ctx.quit = true;
-        report_task.wait();
+        status_task.wait();
 
-        // final report
-        report_one(ctx);
+        // final status update
+        print_status(ctx);
         exit_code = ctx.get_error_count() ? 2 : 0;
     }
 
