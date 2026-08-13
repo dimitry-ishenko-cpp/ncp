@@ -115,8 +115,8 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
     };
     constexpr file_size chunk_size = 4 * 1024 * 1024;
 
-    auto_close in{ ::open(source.path().c_str(), O_RDONLY | O_CLOEXEC) };
-    if (in.fd < 0) { ec = make_error_code(errno); return; }
+    auto_close in { ::open(source.path().c_str(), O_RDONLY | O_CLOEXEC) };
+    if (in.fd  < 0) { ec = make_error_code(errno); return; }
 
     auto_close out{ ::open(target.path().c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
     if (out.fd < 0) { ec = make_error_code(errno); return; }
