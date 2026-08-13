@@ -10,6 +10,7 @@
 #include "file.hpp"
 
 #include <atomic>
+#include <cstddef> // std::size_t
 #include <format>
 #include <mutex>
 #include <string>
@@ -20,6 +21,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 struct context
 {
+    std::size_t jobs = 1;
+
     bool keep_group = false, keep_user = false;
     bool keep_mode = false;
 

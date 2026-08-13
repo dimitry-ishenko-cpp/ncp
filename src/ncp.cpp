@@ -349,7 +349,7 @@ try
         if (args["--user"]) ctx.keep_user = true;
 
         ////////////////////
-        asio::thread_pool pool{1};
+        asio::thread_pool pool{ ctx.jobs };
 
         pctx = &ctx;
         std::signal(SIGINT, signal_handler);
