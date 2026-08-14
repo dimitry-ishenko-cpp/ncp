@@ -283,7 +283,7 @@ try
         { "-o", "--ownership",      "Preserve user and group ownership (same as -ug)." },
         { "-P", "--keep-links",     "Preserve symbolic links (default when recursive)." },
         { "-r", "--recursive",      "Copy directories recursively."             },
-        { "-t", "--target", "dir",  "Target directory to copy/move into."       },
+        { "-T", "--target", "dir",  "Target directory to copy into."            },
         { "-u", "--user",           "Preserve user ownership."                  },
         { "-U", "--update", "when", pgm::optval,
                                     "Update existing files. [when] can be one of:\n"
@@ -291,7 +291,7 @@ try
                                     "If [when] is omitted, 'older' is assumed.\n"
                                     "If the option is omitted entirely, all files are updated,\n"
                                     "which is equivalent to --update=all."      },
-        { "-v", "--version",        "Show program version and exit."            },
+        { "-V", "--version",        "Show program version and exit."            },
 
         { "SOURCE", pgm::mul,       "Files or directories to copy or move."     },
         { "DESTINATION", pgm::opt,  "Destination file or directory."            },
