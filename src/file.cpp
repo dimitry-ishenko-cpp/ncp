@@ -30,7 +30,7 @@ inline auto make_error_code(int val) { return std::error_code{val, std::generic_
 auto to_mtime(io::time time)
 {
     using namespace std::chrono;
-    auto dur = io::time::clock::to_sys(time).time_since_epoch();
+    auto dur = time::clock::to_sys(time).time_since_epoch();
     auto sec = duration_cast<seconds>(dur);
     auto nsec = duration_cast<nanoseconds>(dur - sec);
 
@@ -71,10 +71,10 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
         hardlink_count_ = st.st_nlink;
 
         using namespace std::chrono;
-        auto mtime = duration_cast<io::time::duration>(
+        auto tp = sys_time<nanoseconds>(
             seconds{st.st_mtim.tv_sec} + nanoseconds{st.st_mtim.tv_nsec}
         );
-        time_ = io::time{mtime};
+        time_ = time::clock::from_sys(tp);
 
         ec.clear();
     }
