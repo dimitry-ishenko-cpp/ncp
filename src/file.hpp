@@ -41,8 +41,9 @@ inline constexpr follow_symlinks_t follow_symlinks{};
 struct attrib
 {
     std::optional<io::mode> mode;
-    std::optional<io::uid> uid;
-    std::optional<io::gid> gid;
+    std::optional<io::uid > uid;
+    std::optional<io::gid > gid;
+    std::optional<io::time> time;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

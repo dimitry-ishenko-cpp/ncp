@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "file.hpp"
 
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <memory>
@@ -17,6 +18,7 @@
 #include <fcntl.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,6 +26,16 @@ namespace io
 {
 
 inline auto make_error_code(int val) { return std::error_code{val, std::generic_category()}; }
+
+auto to_mtime(io::time time)
+{
+    using namespace std::chrono;
+    auto dur = io::time::clock::to_sys(time).time_since_epoch();
+    auto sec = duration_cast<seconds>(dur);
+    auto nsec = duration_cast<nanoseconds>(dur - sec);
+
+    return std::array{ timespec{0, UTIME_OMIT}, timespec{sec.count(), nsec.count()} };
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
@@ -131,7 +143,6 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
         if (copied < 0)
         {
             if (errno == EINTR) continue;
-
             // not supported
             if (errno == ENOSYS || errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
 
@@ -149,7 +160,6 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
         if (copied < 0)
         {
             if (errno == EINTR) continue;
-
             // not supported
             if (errno == EINVAL || errno == ENOSYS) break;
 
@@ -198,6 +208,8 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
         ec = make_error_code(errno);
     else if (attr.mode && ::fchmod(out.fd, static_cast<::mode_t>(*attr.mode)))
         ec = make_error_code(errno);
+    else if (attr.time && ::futimens(out.fd, to_mtime(*attr.time).data()))
+        ec = make_error_code(errno);
     else ec.clear();
 }
 
@@ -210,6 +222,9 @@ void create_directory(const path& path, const attrib& attr, std::error_code& ec)
     auto chmod_ = [](auto&& path, auto&& attr) {
         return !attr.mode || 0 == ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode));
     };
+    auto utime_ = [](auto&& path, auto&& attr) {
+        return !attr.time || 0 == ::utimensat(AT_FDCWD, path.c_str(), to_mtime(*attr.time).data(), 0);
+    };
 
     if (0 == ::mkdir(path.c_str(), 0777))
     {
@@ -220,7 +235,7 @@ void create_directory(const path& path, const attrib& attr, std::error_code& ec)
         struct stat st{};
         if (0 == ::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode))
         {
-            if (chown_(path, attr) && chmod_(path, attr)) { ec.clear(); return; }
+            if (chown_(path, attr) && chmod_(path, attr) && utime_(path, attr)) { ec.clear(); return; }
         }
         else errno = EEXIST;
     }
@@ -234,6 +249,8 @@ void create_symlink(const path& to, const path& new_link, const attrib& attr, st
     if (::symlink(to.c_str(), new_link.c_str()))
         ec = make_error_code(errno);
     else if ((attr.gid || attr.uid) && ::lchown(new_link.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1)))
+        ec = make_error_code(errno);
+    else if (attr.time && ::utimensat(AT_FDCWD, new_link.c_str(), to_mtime(*attr.time).data(), AT_SYMLINK_NOFOLLOW))
         ec = make_error_code(errno);
     else ec.clear();
 }
