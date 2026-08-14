@@ -48,6 +48,21 @@ extern "C" void signal_handler(int signal)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool should_copy(context& ctx, const io::file& source, const io::file& target)
+{
+    if (target.exists())
+        switch (ctx.update_)
+        {
+            case update::all:     return true;
+            case update::none:    return false;
+            case update::older:   return source.time() >  target.time();
+            case update::changed: return source.time() != target.time() || source.size() != target.size();
+            case update::size:    return source.size() != target.size();
+        }
+
+    return true;
+}
+
 void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
     if (source.is_directory())
@@ -71,33 +86,35 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
             if (ctx.keep_user ) attr.uid = source.uid();
 
             io::create_symlink(link_target, target.path(), attr, ec);
-            if (ec) ctx.add_error(ec, link_target, target.path());
+            if (ec) ctx.add_error(ec, target.path(), link_target);
         }
         else ctx.add_error(ec, source.path());
     }
     ////////////////////
     else if (source.is_regular_file())
     {
-        ctx.files_total.fetch_add(1, std::memory_order_relaxed);
-        ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
-
-        asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+        if (should_copy(ctx, source, target))
         {
-            if (ctx.quit.load(std::memory_order_relaxed)) return;
+            ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+            ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
 
-            io::attrib attr;
-            if (ctx.keep_group) attr.gid = source.gid();
-            if (ctx.keep_mode ) attr.mode= source.mode();
-            if (ctx.keep_user ) attr.uid = source.uid();
+            asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+            {
+                if (ctx.quit.load(std::memory_order_relaxed)) return;
 
-            std::error_code ec;
-            io::copy_file(source, target, attr, ec);
-            if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
+                io::attrib attr;
+                if (ctx.keep_group) attr.gid = source.gid();
+                if (ctx.keep_mode ) attr.mode= source.mode();
+                if (ctx.keep_user ) attr.uid = source.uid();
 
-            ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-            ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-        });
+                std::error_code ec;
+                io::copy_file(source, target, attr, ec);
+                if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
 
+                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+                ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
+            });
+        }
         ec.clear();
     }
     ////////////////////
@@ -268,8 +285,12 @@ try
         { "-r", "--recursive",      "Copy directories recursively."             },
         { "-t", "--target", "dir",  "Target directory to copy/move into."       },
         { "-u", "--user",           "Preserve user ownership."                  },
-        { "-U", "--update", "when", "When to update existing files. <when> can be one one of:\n"
-                                    "'all' (default), 'none', 'older', 'changed' or 'size'." },
+        { "-U", "--update", "when", pgm::optval,
+                                    "Update existing files. [when] can be one of:\n"
+                                    "'all', 'none', 'older', 'changed' (size or time) or 'size'.\n"
+                                    "If [when] is omitted, 'older' is assumed.\n"
+                                    "If the option is omitted entirely, all files are updated,\n"
+                                    "which is equivalent to --update=all."      },
         { "-v", "--version",        "Show program version and exit."            },
 
         { "SOURCE", pgm::mul,       "Files or directories to copy or move."     },
@@ -347,6 +368,17 @@ try
         if (args["--mode"]) ctx.keep_mode = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
         if (args["--user"]) ctx.keep_user = true;
+
+        if (auto&& update = args["--update"])
+        {
+            auto&& when = update.value();
+            if (when == "all") ctx.update_ = update::all;
+            else if (when == "none") ctx.update_ = update::none;
+            else if (when.empty() || when == "older") ctx.update_ = update::older;
+            else if (when == "changed") ctx.update_ = update::changed;
+            else if (when == "size") ctx.update_ = update::size;
+            else throw pgm::invalid_argument{ "bad --update value '" + when + "'" };
+        }
 
         ////////////////////
         asio::thread_pool pool{ ctx.jobs };

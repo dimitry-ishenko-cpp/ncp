@@ -19,6 +19,11 @@
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
+enum class update
+{
+    all, none, older, changed, size,
+};
+
 struct context
 {
     std::size_t jobs = 1;
@@ -28,6 +33,8 @@ struct context
 
     bool recursive = false;
     bool keep_links = false;
+
+    update update_ = update::all;
 
     ////////////////////
     std::atomic<bool> quit{ false };
