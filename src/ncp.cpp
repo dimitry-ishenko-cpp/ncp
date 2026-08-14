@@ -225,9 +225,12 @@ auto human(long bytes)
     return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
 }
 
-void print_status(context& ctx, bool overwrite = true)
+void print_status(context& ctx)
 {
+    static bool overwrite = false;
+
     if (overwrite) std::print("\033[{}F\033[K", 1);
+    else overwrite = true;
 
     if (int signal = ctx.signal.exchange(0))
         std::print("Received signal {}, exiting...\n", signal);
@@ -255,13 +258,10 @@ void print_status(context& ctx, bool overwrite = true)
 
 void report_status(context& ctx)
 {
-    bool overwrite = false;
     do
     {
         std::this_thread::sleep_for(100ms);
-
-        print_status(ctx, overwrite);
-        overwrite = true;
+        print_status(ctx);
     }
     while (!ctx.quit.load(std::memory_order_relaxed));
 }
@@ -387,7 +387,7 @@ try
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
-        auto status_task = std::async(std::launch::async, report_status, std::ref(ctx));
+        auto status_task = std::async(std::launch::async, [&]{ report_status(ctx); });
         copy_sources(ctx, pool, std::move(sources), std::move(target));
 
         pool.join();
@@ -395,8 +395,7 @@ try
         ctx.quit = true;
         status_task.wait();
 
-        // final status update
-        print_status(ctx);
+        print_status(ctx); // final status
         exit_code = ctx.get_error_count() ? 2 : 0;
     }
 
