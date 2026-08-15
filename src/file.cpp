@@ -25,9 +25,20 @@
 namespace io
 {
 
+namespace
+{
+
+inline bool chmod(const path& path, const attrib& attr) {
+    return !attr.mode || 0 == ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode));
+}
+
+inline bool chown(const path& path, const attrib& attr) {
+    return !(attr.uid || attr.gid) || 0 == ::chown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
+}
+
 inline auto make_error_code(int val) noexcept { return std::error_code{val, std::generic_category()}; }
 
-auto to_mtime(time time) noexcept
+inline auto mtime(time time) noexcept
 {
     using namespace std::chrono;
     auto dur = time::clock::to_sys(time).time_since_epoch();
@@ -35,6 +46,12 @@ auto to_mtime(time time) noexcept
     auto nsec = duration_cast<nanoseconds>(dur - sec);
 
     return std::array{ timespec{0, UTIME_OMIT}, timespec{sec.count(), nsec.count()} };
+}
+
+inline bool utime(const path& path, const attrib& attr) {
+    return !attr.time || 0 == ::utimensat(AT_FDCWD, path.c_str(), mtime(*attr.time).data(), 0);
+}
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,7 +225,7 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
         ec = make_error_code(errno);
     else if (attr.mode && ::fchmod(out.fd, static_cast<::mode_t>(*attr.mode)))
         ec = make_error_code(errno);
-    else if (attr.time && ::futimens(out.fd, to_mtime(*attr.time).data()))
+    else if (attr.time && ::futimens(out.fd, mtime(*attr.time).data()))
         ec = make_error_code(errno);
     else ec.clear();
 }
@@ -216,26 +233,16 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 ////////////////////////////////////////////////////////////////////////////////
 void create_directory(const path& path, const attrib& attr, std::error_code& ec) noexcept
 {
-    auto chown_ = [](auto&& path, auto&& attr) {
-        return !(attr.uid || attr.gid) || 0 == ::chown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
-    };
-    auto chmod_ = [](auto&& path, auto&& attr) {
-        return !attr.mode || 0 == ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode));
-    };
-    auto utime_ = [](auto&& path, auto&& attr) {
-        return !attr.time || 0 == ::utimensat(AT_FDCWD, path.c_str(), to_mtime(*attr.time).data(), 0);
-    };
-
     if (0 == ::mkdir(path.c_str(), 0777))
     {
-        if (chown_(path, attr) && chmod_(path, attr) && utime_(path, attr)) { ec.clear(); return; }
+        if (chown(path, attr) && chmod(path, attr) && utime(path, attr)) { ec.clear(); return; }
     }
     else if (errno == EEXIST)
     {
         struct stat st{};
         if (0 == ::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode))
         {
-            if (chown_(path, attr) && chmod_(path, attr) && utime_(path, attr)) { ec.clear(); return; }
+            if (chown(path, attr) && chmod(path, attr) && utime(path, attr)) { ec.clear(); return; }
         }
         else errno = EEXIST;
     }
@@ -250,7 +257,7 @@ void create_symlink(const path& to, const path& new_link, const attrib& attr, st
         ec = make_error_code(errno);
     else if ((attr.gid || attr.uid) && ::lchown(new_link.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1)))
         ec = make_error_code(errno);
-    else if (attr.time && ::utimensat(AT_FDCWD, new_link.c_str(), to_mtime(*attr.time).data(), AT_SYMLINK_NOFOLLOW))
+    else if (attr.time && ::utimensat(AT_FDCWD, new_link.c_str(), mtime(*attr.time).data(), AT_SYMLINK_NOFOLLOW))
         ec = make_error_code(errno);
     else ec.clear();
 }
