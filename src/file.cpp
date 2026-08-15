@@ -25,9 +25,9 @@
 namespace io
 {
 
-inline auto make_error_code(int val) { return std::error_code{val, std::generic_category()}; }
+inline auto make_error_code(int val) noexcept { return std::error_code{val, std::generic_category()}; }
 
-auto to_mtime(io::time time)
+auto to_mtime(time time) noexcept
 {
     using namespace std::chrono;
     auto dur = time::clock::to_sys(time).time_since_epoch();
@@ -214,7 +214,7 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void create_directory(const path& path, const attrib& attr, std::error_code& ec)
+void create_directory(const path& path, const attrib& attr, std::error_code& ec) noexcept
 {
     auto chown_ = [](auto&& path, auto&& attr) {
         return !(attr.uid || attr.gid) || 0 == ::chown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
@@ -244,7 +244,7 @@ void create_directory(const path& path, const attrib& attr, std::error_code& ec)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void create_symlink(const path& to, const path& new_link, const attrib& attr, std::error_code& ec)
+void create_symlink(const path& to, const path& new_link, const attrib& attr, std::error_code& ec) noexcept
 {
     if (::symlink(to.c_str(), new_link.c_str()))
         ec = make_error_code(errno);

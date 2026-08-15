@@ -105,11 +105,11 @@ private:
 void copy_file(const file&, const file&, const attrib&, std::error_code&);
 inline void copy_file(const file& source, const file& target, std::error_code& ec) { io::copy_file(source, target, {}, ec); }
 
-void create_directory(const path&, const attrib&, std::error_code&);
-inline void create_directory(const path& path, std::error_code& ec) { io::create_directory(path, {}, ec); }
+void create_directory(const path&, const attrib&, std::error_code&) noexcept;
+inline void create_directory(const path& path, std::error_code& ec) noexcept { io::create_directory(path, {}, ec); }
 
-void create_symlink(const path& to, const path& new_link, const attrib&, std::error_code&);
-inline void create_symlink(const path& to, const path& new_link, std::error_code& ec) { io::create_symlink(to, new_link, {}, ec); }
+void create_symlink(const path& to, const path& new_link, const attrib&, std::error_code&) noexcept;
+inline void create_symlink(const path& to, const path& new_link, std::error_code& ec) noexcept { io::create_symlink(to, new_link, {}, ec); }
 
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
 
