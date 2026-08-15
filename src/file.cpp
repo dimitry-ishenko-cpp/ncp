@@ -228,7 +228,7 @@ void create_directory(const path& path, const attrib& attr, std::error_code& ec)
 
     if (0 == ::mkdir(path.c_str(), 0777))
     {
-        if (chown_(path, attr) && chmod_(path, attr)) { ec.clear(); return; }
+        if (chown_(path, attr) && chmod_(path, attr) && utime_(path, attr)) { ec.clear(); return; }
     }
     else if (errno == EEXIST)
     {
