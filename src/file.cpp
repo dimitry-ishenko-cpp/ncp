@@ -33,7 +33,7 @@ inline bool chmod(const path& path, const attrib& attr) {
 }
 
 inline bool chown(const path& path, const attrib& attr) {
-    return !(attr.uid || attr.gid) || 0 == ::chown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
+    return !(attr.uid || attr.gid) || 0 == ::lchown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
 }
 
 inline auto make_error_code(int val) noexcept { return std::error_code{val, std::generic_category()}; }
@@ -49,7 +49,7 @@ inline auto mtime(time time) noexcept
 }
 
 inline bool utime(const path& path, const attrib& attr) {
-    return !attr.time || 0 == ::utimensat(AT_FDCWD, path.c_str(), mtime(*attr.time).data(), 0);
+    return !attr.time || 0 == ::utimensat(AT_FDCWD, path.c_str(), mtime(*attr.time).data(), AT_SYMLINK_NOFOLLOW);
 }
 
 }
