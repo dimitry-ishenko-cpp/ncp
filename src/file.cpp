@@ -83,8 +83,8 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
 
         size_ = st.st_size;
         mode_ = static_cast<io::mode>(st.st_mode & 07777);
-        uid_  = st.st_uid;
         gid_  = st.st_gid;
+        uid_  = st.st_uid;
         hardlink_count_ = st.st_nlink;
 
         using namespace std::chrono;

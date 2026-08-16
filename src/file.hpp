@@ -24,16 +24,16 @@ namespace io
 
 using exception = std::filesystem::filesystem_error;
 
-using std::filesystem::file_type;
 using std::filesystem::path;
+using std::filesystem::file_type;
+using file_size = std::uintmax_t;
 using mode = std::filesystem::perms;
 using time = std::filesystem::file_time_type;
 
-using file_size = std::uintmax_t;
-using hardlink_count = std::uintmax_t;
-
-using uid = uid_t;
 using gid = gid_t;
+using uid = uid_t;
+
+using hardlink_count = std::uintmax_t;
 
 struct follow_symlinks_t { explicit follow_symlinks_t() = default; };
 inline constexpr follow_symlinks_t follow_symlinks{};
@@ -41,9 +41,9 @@ inline constexpr follow_symlinks_t follow_symlinks{};
 struct attrib
 {
     std::optional<io::mode> mode;
-    std::optional<io::uid > uid;
-    std::optional<io::gid > gid;
     std::optional<io::time> time;
+    std::optional<io::gid> gid;
+    std::optional<io::uid> uid;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,9 +54,9 @@ class file
     io::file_type type_ = file_type::none;
     io::file_size size_ = 0;
     io::mode mode_ = mode::unknown;
-    io::uid uid_ = -1;
-    io::gid gid_ = -1;
     io::time time_{};
+    io::gid gid_ = -1;
+    io::uid uid_ = -1;
     io::hardlink_count hardlink_count_ = 0;
 
 public:
@@ -68,14 +68,14 @@ public:
     explicit operator bool() const noexcept { return !empty(); }
     void clear() noexcept { *this = file{}; }
 
-    auto& path() const noexcept { return  path_; }
+    auto& path() const noexcept { return path_; }
 
-    auto type() const noexcept { return type_; }
     auto size() const noexcept { return size_; }
+    auto type() const noexcept { return type_; }
     auto mode() const noexcept { return mode_; }
-    auto  uid() const noexcept { return  uid_; }
-    auto  gid() const noexcept { return  gid_; }
     auto time() const noexcept { return time_; }
+    auto  gid() const noexcept { return  gid_; }
+    auto  uid() const noexcept { return  uid_; }
     auto hardlink_count() const noexcept { return hardlink_count_; }
 
     bool not_found() const noexcept { return type_ == file_type::not_found; }
