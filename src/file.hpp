@@ -30,6 +30,7 @@ using file_size = std::uintmax_t;
 using mode = std::filesystem::perms;
 using time = std::filesystem::file_time_type;
 
+using dev = dev_t;
 using gid = gid_t;
 using uid = uid_t;
 
@@ -57,6 +58,7 @@ class file
     io::time time_{};
     io::gid gid_ = -1;
     io::uid uid_ = -1;
+    io::dev dev_type_ = 0;
     io::hardlink_count hardlink_count_ = 0;
 
 public:
@@ -76,6 +78,7 @@ public:
     auto time() const noexcept { return time_; }
     auto  gid() const noexcept { return  gid_; }
     auto  uid() const noexcept { return  uid_; }
+    auto dev_type() const noexcept { return dev_type_; }
     auto hardlink_count() const noexcept { return hardlink_count_; }
 
     bool not_found() const noexcept { return type_ == file_type::not_found; }
@@ -103,13 +106,33 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 void copy_file(const file&, const file&, const attrib&, std::error_code&);
-inline void copy_file(const file& source, const file& target, std::error_code& ec) { io::copy_file(source, target, {}, ec); }
+inline void copy_file(const file& source, const file& target, std::error_code& ec) {
+    io::copy_file(source, target, {}, ec);
+}
+
+void create_block_device(const path&, dev, const attrib&, std::error_code&) noexcept;
+inline void create_block_device(const path& path, dev type, std::error_code& ec) noexcept {
+    io::create_block_device(path, type, {}, ec);
+}
+
+void create_char_device(const path&, dev, const attrib&, std::error_code&) noexcept;
+inline void create_char_device(const path& path, dev type, std::error_code& ec) noexcept {
+    io::create_char_device(path, type, {}, ec);
+}
 
 void create_directory(const path&, const attrib&, std::error_code&) noexcept;
 inline void create_directory(const path& path, std::error_code& ec) noexcept { io::create_directory(path, {}, ec); }
 
+void create_fifo(const path&, const attrib&, std::error_code&) noexcept;
+inline void create_fifo(const path& path, std::error_code& ec) noexcept { io::create_fifo(path, {}, ec); }
+
+void create_socket(const path&, const attrib&, std::error_code&) noexcept;
+inline void create_socket(const path& path, std::error_code& ec) noexcept { io::create_socket(path, {}, ec); }
+
 void create_symlink(const path& to, const path& new_link, const attrib&, std::error_code&) noexcept;
-inline void create_symlink(const path& to, const path& new_link, std::error_code& ec) noexcept { io::create_symlink(to, new_link, {}, ec); }
+inline void create_symlink(const path& to, const path& new_link, std::error_code& ec) noexcept {
+    io::create_symlink(to, new_link, {}, ec);
+}
 
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
 

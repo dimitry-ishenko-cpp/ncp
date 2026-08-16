@@ -85,6 +85,7 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
         mode_ = static_cast<io::mode>(st.st_mode & 07777);
         gid_  = st.st_gid;
         uid_  = st.st_uid;
+        dev_type_ = st.st_rdev;
         hardlink_count_ = st.st_nlink;
 
         using namespace std::chrono;
@@ -228,6 +229,26 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
     else if (attr.time && ::futimens(out.fd, mtime(*attr.time).data()))
         ec = make_error_code(errno);
     else ec.clear();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void create_node(const path& path, mode_t mode, dev rdev, const attrib& attr, std::error_code& ec) noexcept
+{
+    if (0 == ::mknod(path.c_str(), mode | 0666, rdev)) modify(path, attr, ec);
+    else ec = make_error_code(errno);
+}
+
+void create_block_device(const path& path, dev type, const attrib& attr, std::error_code& ec) noexcept {
+    create_node(path, S_IFBLK, type, attr, ec);
+}
+void create_char_device(const path& path, dev type, const attrib& attr, std::error_code& ec) noexcept {
+    create_node(path, S_IFCHR, type, attr, ec);
+}
+void create_fifo(const path& path, const attrib& attr, std::error_code& ec) noexcept {
+    create_node(path, S_IFIFO, 0, attr, ec);
+}
+void create_socket(const path& path, const attrib& attr, std::error_code& ec) noexcept {
+    create_node(path, S_IFSOCK, 0, attr, ec);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
