@@ -233,33 +233,21 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 ////////////////////////////////////////////////////////////////////////////////
 void create_directory(const path& path, const attrib& attr, std::error_code& ec) noexcept
 {
-    if (0 == ::mkdir(path.c_str(), 0777))
-    {
-        if (chown(path, attr) && chmod(path, attr) && utime(path, attr)) { ec.clear(); return; }
-    }
+    if (0 == ::mkdir(path.c_str(), 0777)) modify(path, attr, ec);
     else if (errno == EEXIST)
     {
         struct stat st{};
-        if (0 == ::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode))
-        {
-            if (chown(path, attr) && chmod(path, attr) && utime(path, attr)) { ec.clear(); return; }
-        }
-        else errno = EEXIST;
+        if (0 == ::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode)) modify(path, attr, ec);
+        else ec = make_error_code(EEXIST);
     }
-
-    ec = make_error_code(errno);
+    else ec = make_error_code(errno);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void create_symlink(const path& to, const path& new_link, const attrib& attr, std::error_code& ec) noexcept
 {
-    if (::symlink(to.c_str(), new_link.c_str()))
-        ec = make_error_code(errno);
-    else if ((attr.gid || attr.uid) && ::lchown(new_link.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1)))
-        ec = make_error_code(errno);
-    else if (attr.time && ::utimensat(AT_FDCWD, new_link.c_str(), mtime(*attr.time).data(), AT_SYMLINK_NOFOLLOW))
-        ec = make_error_code(errno);
-    else ec.clear();
+    if (0 == ::symlink(to.c_str(), new_link.c_str())) modify(new_link, attr, ec);
+    else ec = make_error_code(errno);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -284,6 +272,12 @@ std::generator<std::expected<path, std::error_code>> directory_iterator(const pa
             }
         }
     else co_yield std::unexpected(make_error_code(errno));
+}
+
+void modify(const path& path, const attrib& attr, std::error_code& ec)
+{
+    if (chown(path, attr) && chmod(path, attr) && utime(path, attr)) ec.clear();
+    else ec = make_error_code(errno);
 }
 
 }
