@@ -73,7 +73,9 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
         if (ctx.keep_user ) attr.uid = source.uid();
 
         io::create_directory(target.path(), attr, ec);
-        if (ec) ctx.add_error(ec, target.path());
+        if (ec) { ctx.add_error(ec, target.path()); return; }
+
+        if (ctx.keep_time) ctx.dir_times.emplace_back(target.path(), source.time());
     }
     ////////////////////
     else if (source.is_symlink())
@@ -83,6 +85,7 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
         {
             io::attrib attr;
             if (ctx.keep_group) attr.gid = source.gid();
+            if (ctx.keep_time ) attr.time= source.time();
             if (ctx.keep_user ) attr.uid = source.uid();
 
             io::create_symlink(link_target, target.path(), attr, ec);
@@ -105,6 +108,7 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
                 io::attrib attr;
                 if (ctx.keep_group) attr.gid = source.gid();
                 if (ctx.keep_mode ) attr.mode= source.mode();
+                if (ctx.keep_time ) attr.time= source.time();
                 if (ctx.keep_user ) attr.uid = source.uid();
 
                 std::error_code ec;
@@ -213,6 +217,16 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
     };
 }
 
+void update_dirs(context& ctx)
+{
+    for (auto&& [path, time] : ctx.dir_times)
+    {
+        std::error_code ec;
+        io::modify(path, io::attrib{.time = time}, ec);
+        if (ec) ctx.add_error(ec, path);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 auto human(long bytes)
 {
@@ -284,6 +298,7 @@ try
         { "-P", "--keep-links",     "Preserve symbolic links (default when recursive)." },
         { "-r", "--recursive",      "Copy directories recursively."             },
         { "-T", "--target", "dir",  "Target directory to copy into."            },
+        { "-t", "--time",           "Preserve modification time."               },
         { "-u", "--user",           "Preserve user ownership."                  },
         { "-U", "--update", "when", pgm::optval,
                                     "Update existing files. [when] can be one of:\n"
@@ -367,6 +382,7 @@ try
 
         if (args["--mode"]) ctx.keep_mode = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
+        if (args["--time"]) ctx.keep_time = true;
         if (args["--user"]) ctx.keep_user = true;
 
         if (auto&& update = args["--update"])
@@ -388,14 +404,15 @@ try
         std::signal(SIGTERM, signal_handler);
 
         auto status_task = std::async(std::launch::async, [&]{ report_status(ctx); });
-        copy_sources(ctx, pool, std::move(sources), std::move(target));
 
+        copy_sources(ctx, pool, std::move(sources), std::move(target));
         pool.join();
+        update_dirs(ctx);
 
         ctx.quit = true;
         status_task.wait();
-
         print_status(ctx); // final status
+
         exit_code = ctx.get_error_count() ? 2 : 0;
     }
 

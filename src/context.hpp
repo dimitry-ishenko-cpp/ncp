@@ -15,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <system_error>
+#include <tuple>
 #include <utility> // std::exchange
 #include <vector>
 
@@ -30,6 +31,7 @@ struct context
 
     bool keep_group = false, keep_user = false;
     bool keep_mode = false;
+    bool keep_time = false;
 
     bool recursive = false;
     bool keep_links = false;
@@ -39,6 +41,8 @@ struct context
     ////////////////////
     std::atomic<bool> quit{ false };
     std::atomic<int> signal{0};
+
+    std::vector< std::tuple<io::path, io::time> > dir_times;
 
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
