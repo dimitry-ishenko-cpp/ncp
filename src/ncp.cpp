@@ -122,6 +122,42 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
         ec.clear();
     }
     ////////////////////
+    else if (source.is_device())
+    {
+        if (ctx.keep_devices)
+        {
+            io::attrib attr;
+            if (ctx.keep_group) attr.gid = source.gid();
+            if (ctx.keep_mode ) attr.mode= source.mode();
+            if (ctx.keep_time ) attr.time= source.time();
+            if (ctx.keep_user ) attr.uid = source.uid();
+
+            if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
+            else io::create_char_device(target.path(), source.dev_type(), attr, ec);
+
+            if (ec) ctx.add_error(ec, target.path());
+        }
+        else ctx.add_error("Skipping device file", source.path());
+    }
+    ////////////////////
+    else if (source.is_special())
+    {
+        if (ctx.keep_special)
+        {
+            io::attrib attr;
+            if (ctx.keep_group) attr.gid = source.gid();
+            if (ctx.keep_mode ) attr.mode= source.mode();
+            if (ctx.keep_time ) attr.time= source.time();
+            if (ctx.keep_user ) attr.uid = source.uid();
+
+            if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
+            else io::create_socket(target.path(), attr, ec);
+
+            if (ec) ctx.add_error(ec, target.path());
+        }
+        else ctx.add_error("Skipping special file", source.path());
+    }
+    ////////////////////
     else if (!source.exists())
     {
         ctx.add_error("Source does not exist", source.path());
@@ -290,6 +326,8 @@ try
 
     pgm::args args
     {
+        { "-D",                     "Same as --special --devices."              },
+        {       "--devices",        "Preserve device files."                    },
         { "-g", "--group",          "Preserve group ownership."                 },
         { "-h", "--help",           "Show this help message and exit."          },
         { "-L", "--follow-links",   "Dereference symbolic links (default when non-recursive)." },
@@ -297,6 +335,7 @@ try
         { "-o", "--ownership",      "Same as --user --group."                   },
         { "-P", "--keep-links",     "Preserve symbolic links (default when recursive)." },
         { "-r", "--recursive",      "Copy directories recursively."             },
+        {       "--special",        "Preserve named pipes and sockets."         },
         { "-T", "--target", "dir",  "Target directory to copy into."            },
         { "-t", "--time",           "Preserve modification time."               },
         { "-u", "--user",           "Preserve user ownership."                  },
@@ -364,6 +403,8 @@ try
             if (ec) throw io::exception{"main", target.path(), ec};
         }
 
+        if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
+        if (args["--devices"]) ctx.keep_devices = true;
         if (args["--group"]) ctx.keep_group = true;
 
         if (args["--recursive"]) ctx.recursive = true;
@@ -382,6 +423,7 @@ try
 
         if (args["--mode"]) ctx.keep_mode = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
+        if (args["--special"]) ctx.keep_special = true;
         if (args["--time"]) ctx.keep_time = true;
         if (args["--user"]) ctx.keep_user = true;
 

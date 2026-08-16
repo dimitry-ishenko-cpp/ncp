@@ -33,9 +33,11 @@ struct context
     bool keep_mode = false;
     bool keep_time = false;
 
-    bool recursive = false;
+    bool keep_devices = false;
     bool keep_links = false;
+    bool keep_special = false;
 
+    bool recursive = false;
     update update_ = update::all;
 
     ////////////////////
