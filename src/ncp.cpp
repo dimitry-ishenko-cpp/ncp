@@ -11,13 +11,16 @@
 
 #include <array>
 #include <asio.hpp>
+#include <charconv>
 #include <csignal>
 #include <exception>
 #include <format>
 #include <generator>
+#include <optional>
 #include <print>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -45,6 +48,13 @@ extern "C" void signal_handler(int signal)
         pctx->signal = signal;
         pctx->quit = true;
     }
+}
+
+std::optional<int> parse(std::string_view text)
+{
+    int n;
+    auto [_, ec] = std::from_chars(text.data(), text.data() + text.size(), n);
+    if (ec == std::errc{}) return n; else return std::nullopt;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -326,29 +336,30 @@ try
 
     pgm::args args
     {
-        { "-D",                     "Same as --special --devices."              },
-        {       "--devices",        "Preserve device files."                    },
-        { "-g", "--group",          "Preserve group ownership."                 },
-        { "-h", "--help",           "Show this help message and exit."          },
+        { "-D",                     "Same as --special --devices."                      },
+        {       "--devices",        "Preserve device files."                            },
+        { "-g", "--group",          "Preserve group ownership."                         },
+        { "-h", "--help",           "Show this help message and exit."                  },
+        { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
         { "-L", "--follow-links",   "Dereference symbolic links (default when non-recursive)." },
-        { "-m", "--mode",           "Preserve file permissions (mode bits)."    },
-        { "-o", "--ownership",      "Same as --user --group."                   },
+        { "-m", "--mode",           "Preserve file permissions (mode bits)."            },
+        { "-o", "--ownership",      "Same as --user --group."                           },
         { "-P", "--keep-links",     "Preserve symbolic links (default when recursive)." },
-        { "-r", "--recursive",      "Copy directories recursively."             },
-        {       "--special",        "Preserve named pipes and sockets."         },
-        { "-T", "--target", "dir",  "Target directory to copy into."            },
-        { "-t", "--time",           "Preserve modification time."               },
-        { "-u", "--user",           "Preserve user ownership."                  },
+        { "-r", "--recursive",      "Copy directories recursively."                     },
+        {       "--special",        "Preserve named pipes and sockets."                 },
+        { "-T", "--target", "dir",  "Target directory to copy into."                    },
+        { "-t", "--time",           "Preserve modification time."                       },
+        { "-u", "--user",           "Preserve user ownership."                          },
         { "-U", "--update", "when", pgm::optval,
                                     "Update existing files. [when] can be one of:\n"
                                     "'all', 'none', 'older', 'changed' (size or time) or 'size'.\n"
                                     "If [when] is omitted, 'older' is assumed.\n"
                                     "If the option is omitted entirely, all files are updated,\n"
-                                    "which is equivalent to --update=all."      },
-        { "-V", "--version",        "Show program version and exit."            },
+                                    "which is equivalent to --update=all."              },
+        { "-V", "--version",        "Show program version and exit."                    },
 
-        { "SOURCE", pgm::mul,       "Files or directories to copy or move."     },
-        { "DESTINATION", pgm::opt,  "Destination file or directory."            },
+        { "SOURCE", pgm::mul,       "Files or directories to copy or move."             },
+        { "DESTINATION", pgm::opt,  "Destination file or directory."                    },
     };
 
     std::exception_ptr ep;
@@ -421,6 +432,12 @@ try
         if (follow_links) ctx.keep_links = false;
         else if (keep_links) ctx.keep_links = true;
 
+        if (auto&& jobs = args["--jobs"])
+        {
+            auto n = parse(jobs.value()).value_or(-1);
+            if (n < 1 || n > 16) throw pgm::invalid_argument{ "bad --jobs value '" + jobs.value() + "'"};
+            ctx.jobs = n;
+        }
         if (args["--mode"]) ctx.keep_mode = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
         if (args["--special"]) ctx.keep_special = true;
