@@ -336,6 +336,7 @@ try
 
     pgm::args args
     {
+        { "-a", "--archive",        "Archive mode (equivalent to -rmotD)."              },
         { "-D",                     "Same as --special --devices."                      },
         {       "--devices",        "Preserve device files."                            },
         { "-g", "--group",          "Preserve group ownership."                         },
@@ -414,6 +415,16 @@ try
             if (ec) throw io::exception{"main", target.path(), ec};
         }
 
+        if (args["--archive"])
+        {
+            ctx.keep_devices = true;
+            ctx.keep_group = true;
+            ctx.keep_mode  = true;
+            ctx.keep_special = true;
+            ctx.keep_time  = true;
+            ctx.keep_user  = true;
+            ctx.recursive  = true;
+        }
         if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
         if (args["--devices"]) ctx.keep_devices = true;
         if (args["--group"]) ctx.keep_group = true;
