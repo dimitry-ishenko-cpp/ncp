@@ -20,6 +20,7 @@
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
+enum class unlink { never, always, auto_ };
 enum class update { none, all, older, changed, size, };
 
 struct context
@@ -35,6 +36,7 @@ struct context
     bool keep_special = false;
 
     bool recursive = false;
+    unlink unlink_ = unlink::auto_;
     update update_ = update::all;
 
     ////////////////////

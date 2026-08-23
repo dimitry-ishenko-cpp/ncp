@@ -73,6 +73,22 @@ bool should_copy(context& ctx, const io::file& source, const io::file& target)
     return true;
 }
 
+bool should_replace(context& ctx, const io::file& target)
+{
+    return ctx.unlink_ != unlink::never && target.exists();
+}
+
+bool should_unlink(context& ctx, const io::file& target)
+{
+    switch (ctx.unlink_)
+    {
+        case unlink::never:  return false;
+        case unlink::always: return true;
+        case unlink::auto_:  return target.is_symlink() || target.hardlink_count() > 1;
+    }
+    return false;
+}
+
 void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
     if (source.is_directory())
@@ -98,6 +114,8 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
             if (ctx.keep_time ) attr.time= source.time();
             if (ctx.keep_user ) attr.uid = source.uid();
 
+            if (should_replace(ctx, target)) io::remove(target.path(), ec);
+
             io::create_symlink(link_target, target.path(), attr, ec);
             if (ec) ctx.add_error(ec, target.path(), link_target);
         }
@@ -122,7 +140,16 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
                 if (ctx.keep_user ) attr.uid = source.uid();
 
                 std::error_code ec;
+                if (should_unlink(ctx, target)) io::remove(target.path(), ec);
+
                 io::copy_file(source, target, attr, ec);
+
+                if (ec == std::errc::permission_denied && ctx.unlink_ != unlink::never)
+                {
+                    io::remove(target.path(), ec);
+                    io::copy_file(source, target, attr, ec);
+                }
+
                 if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
 
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
@@ -142,6 +169,8 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
             if (ctx.keep_time ) attr.time= source.time();
             if (ctx.keep_user ) attr.uid = source.uid();
 
+            if (should_replace(ctx, target)) io::remove(target.path(), ec);
+
             if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
             else io::create_char_device(target.path(), source.dev_type(), attr, ec);
 
@@ -159,6 +188,8 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
             if (ctx.keep_mode ) attr.mode= source.mode();
             if (ctx.keep_time ) attr.time= source.time();
             if (ctx.keep_user ) attr.uid = source.uid();
+
+            if (should_replace(ctx, target)) io::remove(target.path(), ec);
 
             if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
             else io::create_socket(target.path(), attr, ec);
@@ -339,6 +370,11 @@ try
         { "-a", "--archive",        "Archive mode (equivalent to -rmotD)."              },
         { "-D",                     "Same as --special --devices."                      },
         {       "--devices",        "Preserve device files."                            },
+        { "-f", "--unlink", "when", pgm::optval,
+                                    "Unlink destination before writing. [when] can be one of:\n"
+                                    "'never', 'always' or 'auto'.\n"
+                                    "If [when] is omitted, 'always' is assumed.\n"
+                                    "If the option is omitted entirely, 'auto' is used."},
         { "-g", "--group",          "Preserve group ownership."                         },
         { "-h", "--help",           "Show this help message and exit."                  },
         { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
@@ -454,6 +490,15 @@ try
         if (args["--special"]) ctx.keep_special = true;
         if (args["--time"]) ctx.keep_time = true;
         if (args["--user"]) ctx.keep_user = true;
+
+        if (auto&& unlink = args["--unlink"])
+        {
+            auto&& when = unlink.value();
+            if (when == "never") ctx.unlink_ = unlink::never;
+            else if (when.empty() || when == "always") ctx.unlink_ = unlink::always;
+            else if (when == "auto") ctx.unlink_ = unlink::auto_;
+            else throw pgm::invalid_argument{ "bad --unlink value '" + when + "'" };
+        }
 
         if (auto&& update = args["--update"])
         {
