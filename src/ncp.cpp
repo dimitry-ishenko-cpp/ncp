@@ -53,8 +53,9 @@ extern "C" void signal_handler(int signal)
 std::optional<int> parse(std::string_view text)
 {
     int n;
-    auto [_, ec] = std::from_chars(text.data(), text.data() + text.size(), n);
-    if (ec == std::errc{}) return n; else return std::nullopt;
+    auto from = text.data(), to = from + text.size();
+    auto [p, ec] = std::from_chars(from, to, n);
+    if (ec == std::errc{} && p == to) return n; else return std::nullopt;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
