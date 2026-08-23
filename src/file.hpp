@@ -138,6 +138,8 @@ std::generator<std::expected<path, std::error_code>> directory_iterator(const pa
 
 void modify(const path&, const attrib&, std::error_code&);
 
+void remove(const path&, std::error_code&);
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////

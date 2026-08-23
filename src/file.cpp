@@ -301,4 +301,10 @@ void modify(const path& path, const attrib& attr, std::error_code& ec)
     else ec = make_error_code(errno);
 }
 
+void remove(const path& path, std::error_code& ec)
+{
+    if (0 == ::unlink(path.c_str())) ec.clear();
+    else ec = make_error_code(errno);
+}
+
 }
