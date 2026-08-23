@@ -20,10 +20,7 @@
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
-enum class update
-{
-    all, none, older, changed, size,
-};
+enum class update { none, all, older, changed, size, };
 
 struct context
 {

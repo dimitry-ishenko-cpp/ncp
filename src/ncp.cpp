@@ -63,8 +63,8 @@ bool should_copy(context& ctx, const io::file& source, const io::file& target)
     if (target.exists())
         switch (ctx.update_)
         {
-            case update::all:     return true;
             case update::none:    return false;
+            case update::all:     return true;
             case update::older:   return source.time() >  target.time();
             case update::changed: return source.time() != target.time() || source.size() != target.size();
             case update::size:    return source.size() != target.size();
@@ -350,13 +350,13 @@ try
         {       "--special",        "Preserve named pipes and sockets."                 },
         { "-T", "--target", "dir",  "Target directory to copy into."                    },
         { "-t", "--time",           "Preserve modification time."                       },
-        { "-u", "--user",           "Preserve user ownership."                          },
         { "-U", "--update", "when", pgm::optval,
                                     "Update existing files. [when] can be one of:\n"
-                                    "'all', 'none', 'older', 'changed' (size or time) or 'size'.\n"
+                                    "'none', 'all', 'older', 'changed' (size or time) or 'size'.\n"
                                     "If [when] is omitted, 'older' is assumed.\n"
                                     "If the option is omitted entirely, all files are updated,\n"
                                     "which is equivalent to --update=all."              },
+        { "-u", "--user",           "Preserve user ownership."                          },
         { "-V", "--version",        "Show program version and exit."                    },
 
         { "SOURCE", pgm::mul,       "Files or directories to copy or move."             },
@@ -458,8 +458,8 @@ try
         if (auto&& update = args["--update"])
         {
             auto&& when = update.value();
-            if (when == "all") ctx.update_ = update::all;
-            else if (when == "none") ctx.update_ = update::none;
+            if (when == "none") ctx.update_ = update::none;
+            else if (when == "all") ctx.update_ = update::all;
             else if (when.empty() || when == "older") ctx.update_ = update::older;
             else if (when == "changed") ctx.update_ = update::changed;
             else if (when == "size") ctx.update_ = update::size;
