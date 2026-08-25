@@ -280,7 +280,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
             {
                 std::error_code ec;
                 target_ = io::file{target.path() / source.path().filename(), io::follow_symlinks, ec};
-                if (ec) throw io::exception{"walk_all", target_.path(), ec};
+                if (ec) throw io::exception{"copy_sources", target_.path(), ec};
             }
 
             copy_source(ctx, pool, std::move(source), std::move(target_));
@@ -290,7 +290,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
     {
         copy_source(ctx, pool, std::move(sources.front()), std::move(target));
     }
-    else throw io::exception{"walk_all",
+    else throw io::exception{"copy_sources",
         target.path(), std::make_error_code(std::errc::not_a_directory)
     };
 }
