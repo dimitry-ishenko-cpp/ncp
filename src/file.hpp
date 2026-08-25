@@ -105,6 +105,8 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+bool can_read(const path&, std::error_code&) noexcept;
+
 void copy_file(const file&, const file&, const attrib&, std::error_code&);
 inline void copy_file(const file& source, const file& target, std::error_code& ec) {
     io::copy_file(source, target, {}, ec);

@@ -137,6 +137,14 @@ file file::follow_symlinks(std::error_code& ec) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool can_read(const path& path, std::error_code& ec) noexcept
+{
+    if (0 == ::access(path.c_str(), R_OK)) ec.clear();
+    else ec = make_error_code(errno);
+    return !ec;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void copy_file(const file& source, const file& target, const attrib& attr, std::error_code& ec)
 {
     struct auto_close
