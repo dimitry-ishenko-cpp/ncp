@@ -371,6 +371,7 @@ try
         { "-a", "--archive",        "Archive mode (equivalent to -rmotD)."              },
         { "-D",                     "Same as --special --devices."                      },
         {       "--devices",        "Preserve device files."                            },
+        { "-F", "--follow-dest-links", "Dereference destination symlinks."              },
         { "-f", "--unlink", "when", pgm::optval,
                                     "Unlink destination before writing. [when] can be one of:\n"
                                     "'never', 'always' or 'auto'.\n"
@@ -379,10 +380,10 @@ try
         { "-g", "--group",          "Preserve group ownership."                         },
         { "-h", "--help",           "Show this help message and exit."                  },
         { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
-        { "-L", "--follow-links",   "Dereference symbolic links (default when non-recursive)." },
+        { "-L", "--follow-links",   "Dereference source symlinks (default when non-recursive)." },
         { "-m", "--mode",           "Preserve file permissions (mode bits)."            },
         { "-o", "--ownership",      "Same as --user --group."                           },
-        { "-P", "--keep-links",     "Preserve symbolic links (default when recursive)." },
+        { "-P", "--keep-links",     "Preserve source symlinks (default when recursive)."},
         { "-r", "--recursive",      "Copy directories recursively."                     },
         {       "--special",        "Preserve named pipes and sockets."                 },
         { "-T", "--target", "dir",  "Target directory to copy into."                    },
@@ -464,6 +465,7 @@ try
         }
         if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
         if (args["--devices"]) ctx.keep_devices = true;
+        if (args["--follow-dest-links"]) ctx.follow_dest_links = true;
         if (args["--group"]) ctx.keep_group = true;
 
         if (args["--recursive"]) ctx.recursive = true;

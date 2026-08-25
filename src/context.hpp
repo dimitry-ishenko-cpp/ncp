@@ -27,6 +27,8 @@ struct context
 {
     std::size_t jobs = 1;
 
+    bool follow_dest_links = false;
+
     bool keep_group = false, keep_user = false;
     bool keep_mode = false;
     bool keep_time = false;
