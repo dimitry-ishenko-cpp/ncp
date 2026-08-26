@@ -50,13 +50,15 @@ struct context
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
 
-    void add_error(std::string msg)
+    void add_error(std::string msg, const io::path& path1 = {}, const io::path& path2 = {})
     {
+        if (!path1.empty()) msg += std::format(": {}", path1.string());
+        if (!path2.empty()) msg += std::format(" => {}", path2.string());
+
         std::lock_guard guard{mutex};
         errors.push_back(std::move(msg));
         ++error_count;
     }
-    void add_error(const std::string& msg, const io::path& path) { add_error(std::format("{}: '{}'", msg, path.string())); }
     void add_error(std::error_code ec, const auto&... path) { add_error(std::format("{}", io::exception{"", path..., ec})); }
     void add_error(std::errc cond, const auto&... path) { add_error(std::make_error_code(cond), path...); }
 
