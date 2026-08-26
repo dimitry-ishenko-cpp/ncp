@@ -180,7 +180,7 @@ bool can_read(const path& path, std::error_code& ec) noexcept
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(const file& source, const file& target, const attrib& attr, std::error_code& ec)
+void copy_file(const file& source, const file& target, const attrib& attr, progress_callback cb, std::error_code& ec)
 {
     constexpr file_size chunk_size = 4 * 1024 * 1024;
 
@@ -190,10 +190,10 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
     auto_close out{ ::open(target.path().c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
     if (out.fd < 0) { ec = make_error_code(errno); return; }
 
-    bool done = false;
+    bool copying = true;
 
     // try copy_file_range
-    while (!done)
+    while (copying)
     {
         auto copied = ::copy_file_range(in.fd, nullptr, out.fd, nullptr, chunk_size, 0);
         if (copied < 0)
@@ -205,12 +205,12 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
             ec = make_error_code(errno);
             return;
         }
-        else if (copied > 0) /* TODO */;
-        else done = true;
+        else if (copied > 0) { if (cb) copying = cb(copied); }
+        else copying = false;
     }
 
     // try sendfile
-    while (!done)
+    while (copying)
     {
         auto copied = ::sendfile(out.fd, in.fd, nullptr, chunk_size);
         if (copied < 0)
@@ -222,42 +222,46 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
             ec = make_error_code(errno);
             return;
         }
-        else if (copied > 0) /* TODO */;
-        else done = true;
+        else if (copied > 0) { if (cb) copying = cb(copied); }
+        else copying = false;
     }
 
     // try read/write
-    if (!done)
+    if (copying)
     {
         auto buf = std::make_unique_for_overwrite<char[]>(chunk_size);
         do
         {
-            auto rn = ::read(in.fd, buf.get(), chunk_size);
-            if (rn < 0)
+            auto read = ::read(in.fd, buf.get(), chunk_size);
+            if (read < 0)
             {
                 if (errno == EINTR) continue;
 
                 ec = make_error_code(errno);
                 return;
             }
-            else if (rn > 0)
+            else if (read > 0)
             {
-                for (auto p = buf.get(); rn; )
+                for (auto p = buf.get(); read; )
                 {
-                    auto wn = ::write(out.fd, p, rn);
-                    if (wn < 0)
+                    auto wrtn = ::write(out.fd, p, read);
+                    if (wrtn < 0)
                     {
                         if (errno == EINTR) continue;
 
                         ec = make_error_code(errno);
                         return;
                     }
-                    else rn -= wn, p += wn;
+                    else
+                    {
+                        read -= wrtn; p += wrtn;
+                        if (cb) copying = cb(wrtn);
+                    }
                 }
             }
-            else done = true;
+            else copying = false;
         }
-        while (!done);
+        while (copying);
     }
 
     if ((attr.uid || attr.gid) && ::fchown(out.fd, attr.uid.value_or(-1), attr.gid.value_or(-1)))
