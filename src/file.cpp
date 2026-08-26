@@ -184,6 +184,12 @@ void copy_file(const file& source, const file& target, const attrib& attr, progr
 {
     constexpr file_size chunk_size = 4 * 1024 * 1024;
 
+    auto tick = [&](file_size copied) {
+        if (!cb || cb(copied)) return true;
+        ec = std::make_error_code(std::errc::operation_canceled);
+        return false;
+    };
+
     auto_close in { ::open(source.path().c_str(), O_RDONLY | O_CLOEXEC) };
     if (in.fd  < 0) { ec = make_error_code(errno); return; }
 
@@ -205,7 +211,7 @@ void copy_file(const file& source, const file& target, const attrib& attr, progr
             ec = make_error_code(errno);
             return;
         }
-        else if (copied > 0) { if (cb) copying = cb(copied); }
+        else if (copied > 0) { if (!tick(copied)) return; }
         else copying = false;
     }
 
@@ -222,7 +228,7 @@ void copy_file(const file& source, const file& target, const attrib& attr, progr
             ec = make_error_code(errno);
             return;
         }
-        else if (copied > 0) { if (cb) copying = cb(copied); }
+        else if (copied > 0) { if (!tick(copied)) return; }
         else copying = false;
     }
 
@@ -255,7 +261,7 @@ void copy_file(const file& source, const file& target, const attrib& attr, progr
                     else
                     {
                         read -= wrtn; p += wrtn;
-                        if (cb) copying = cb(wrtn);
+                        if (!tick(wrtn)) return;
                     }
                 }
             }
