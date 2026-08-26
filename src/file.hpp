@@ -32,6 +32,7 @@ using time = std::filesystem::file_time_type;
 
 using dev = dev_t;
 using gid = gid_t;
+using ino = ino_t;
 using uid = uid_t;
 
 using hardlink_count = std::uintmax_t;
@@ -59,6 +60,9 @@ class file
     io::gid gid_ = -1;
     io::uid uid_ = -1;
     io::dev dev_type_ = 0;
+
+    io::dev dev_ = 0;
+    io::ino ino_ = 0;
     io::hardlink_count hardlink_count_ = 0;
 
 public:
@@ -99,6 +103,10 @@ public:
     ////////////////////
     file follow_symlinks(std::error_code&) const;
     io::path get_target_path(std::error_code&) const;
+
+    friend bool operator==(const file& lhs, const file& rhs) noexcept {
+        return lhs.exists() && rhs.exists() && lhs.dev_ == rhs.dev_ && lhs.ino_ == rhs.ino_;
+    }
 
 private:
     file(io::path, bool follow_symlinks, std::error_code&) noexcept;

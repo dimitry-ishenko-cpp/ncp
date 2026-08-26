@@ -86,6 +86,8 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
         gid_  = st.st_gid;
         uid_  = st.st_uid;
         dev_type_ = st.st_rdev;
+        dev_  = st.st_dev;
+        ino_  = st.st_ino;
         hardlink_count_ = st.st_nlink;
 
         using namespace std::chrono;
