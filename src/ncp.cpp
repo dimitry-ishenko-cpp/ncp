@@ -165,9 +165,17 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
             break;
 
         case io::file_type::fifo:
-        case io::file_type::socket:
             if (from_walk) copy_special(ctx, pool, std::move(source), std::move(target), ec);
             else copy_regular_file(ctx, pool, std::move(source), std::move(target), ec);
+            break;
+
+        case io::file_type::socket:
+            if (from_walk) copy_special(ctx, pool, std::move(source), std::move(target), ec);
+            else 
+            {
+                ctx.add_error("Cannot copy from a socket", source.path());
+                ec = std::make_error_code(std::errc::operation_not_supported);
+            }
             break;
 
         case io::file_type::not_found:
