@@ -59,156 +59,135 @@ std::optional<int> parse(std::string_view text)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool should_copy(context& ctx, const io::file& source, const io::file& target)
+void copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
-    if (target.exists())
-        switch (ctx.update_)
-        {
-            case update::none:    return false;
-            case update::all:     return true;
-            case update::older:   return source.time() >  target.time();
-            case update::changed: return source.time() != target.time() || source.size() != target.size();
-            case update::size:    return source.size() != target.size();
-        }
+    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+    ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
 
-    return true;
-}
-
-bool should_replace(context& ctx, const io::file& target)
-{
-    return ctx.unlink_ != unlink::never && target.exists();
-}
-
-bool should_unlink(context& ctx, const io::file& target)
-{
-    switch (ctx.unlink_)
+    asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
     {
-        case unlink::never:  return false;
-        case unlink::always: return true;
-        case unlink::auto_:  return target.is_symlink() || target.hardlink_count() > 1;
-    }
-    return false;
+        if (ctx.quit.load(std::memory_order_relaxed)) return;
+
+        io::attrib attr;
+        if (ctx.keep_group) attr.gid = source.gid();
+        if (ctx.keep_mode ) attr.mode= source.mode();
+        if (ctx.keep_time ) attr.time= source.time();
+        if (ctx.keep_user ) attr.uid = source.uid();
+
+        std::error_code ec;
+        io::copy_file(source, target, attr, ec);
+        if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
+
+        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
+    });
 }
 
-void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+void copy_directory(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
-    if (source.is_directory())
+    io::attrib attr;
+    if (ctx.keep_group) attr.gid = source.gid();
+    if (ctx.keep_mode ) attr.mode= source.mode();
+    if (ctx.keep_user ) attr.uid = source.uid();
+
+    io::create_directory(target.path(), attr, ec);
+    if (ec) { ctx.add_error(ec, target.path()); return; }
+
+    if (ctx.keep_time) ctx.dir_times.emplace_back(target.path(), source.time());
+}
+
+void copy_symlink(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+{
+    auto link_target = source.get_target_path(ec);
+    if (!ec)
+    {
+        io::attrib attr;
+        if (ctx.keep_group) attr.gid = source.gid();
+        if (ctx.keep_time ) attr.time= source.time();
+        if (ctx.keep_user ) attr.uid = source.uid();
+
+        io::create_symlink(link_target, target.path(), attr, ec);
+        if (ec) ctx.add_error(ec, target.path(), link_target);
+    }
+    else ctx.add_error(ec, source.path());
+}
+
+void copy_device(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+{
+    if (ctx.keep_devices)
     {
         io::attrib attr;
         if (ctx.keep_group) attr.gid = source.gid();
         if (ctx.keep_mode ) attr.mode= source.mode();
+        if (ctx.keep_time ) attr.time= source.time();
         if (ctx.keep_user ) attr.uid = source.uid();
 
-        io::create_directory(target.path(), attr, ec);
-        if (ec) { ctx.add_error(ec, target.path()); return; }
+        if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
+        else io::create_char_device(target.path(), source.dev_type(), attr, ec);
 
-        if (ctx.keep_time) ctx.dir_times.emplace_back(target.path(), source.time());
+        if (ec) ctx.add_error(ec, target.path());
     }
-    ////////////////////
-    else if (source.is_symlink())
+    else ctx.add_error("Skipping device file", source.path());
+}
+
+void copy_special(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+{
+    if (ctx.keep_special)
     {
-        auto link_target = source.get_target_path(ec);
-        if (!ec)
-        {
-            io::attrib attr;
-            if (ctx.keep_group) attr.gid = source.gid();
-            if (ctx.keep_time ) attr.time= source.time();
-            if (ctx.keep_user ) attr.uid = source.uid();
+        io::attrib attr;
+        if (ctx.keep_group) attr.gid = source.gid();
+        if (ctx.keep_mode ) attr.mode= source.mode();
+        if (ctx.keep_time ) attr.time= source.time();
+        if (ctx.keep_user ) attr.uid = source.uid();
 
-            if (should_replace(ctx, target)) io::remove(target.path(), ec);
+        if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
+        else io::create_socket(target.path(), attr, ec);
 
-            io::create_symlink(link_target, target.path(), attr, ec);
-            if (ec) ctx.add_error(ec, target.path(), link_target);
-        }
-        else ctx.add_error(ec, source.path());
+        if (ec) ctx.add_error(ec, target.path());
     }
-    ////////////////////
-    else if (source.is_regular_file())
+    else ctx.add_error("Skipping special file", source.path());
+}
+
+void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+{
+    if (target == source)
     {
-        if (should_copy(ctx, source, target))
-        {
-            ctx.files_total.fetch_add(1, std::memory_order_relaxed);
-            ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
-
-            asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
-            {
-                if (ctx.quit.load(std::memory_order_relaxed)) return;
-
-                io::attrib attr;
-                if (ctx.keep_group) attr.gid = source.gid();
-                if (ctx.keep_mode ) attr.mode= source.mode();
-                if (ctx.keep_time ) attr.time= source.time();
-                if (ctx.keep_user ) attr.uid = source.uid();
-
-                std::error_code ec;
-                if (should_unlink(ctx, target)) io::remove(target.path(), ec);
-
-                io::copy_file(source, target, attr, ec);
-
-                if (ec == std::errc::permission_denied && ctx.unlink_ != unlink::never)
-                {
-                    io::remove(target.path(), ec);
-                    io::copy_file(source, target, attr, ec);
-                }
-
-                if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
-
-                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-            });
-        }
+        ctx.add_error("Skipping same file", source.path(), target.path());
         ec.clear();
     }
-    ////////////////////
-    else if (source.is_device())
+    else switch (source.type())
     {
-        if (ctx.keep_devices)
-        {
-            io::attrib attr;
-            if (ctx.keep_group) attr.gid = source.gid();
-            if (ctx.keep_mode ) attr.mode= source.mode();
-            if (ctx.keep_time ) attr.time= source.time();
-            if (ctx.keep_user ) attr.uid = source.uid();
+        case io::file_type::regular:
+            copy_regular_file(ctx, pool, std::move(source), std::move(target), ec);
+            break;
 
-            if (should_replace(ctx, target)) io::remove(target.path(), ec);
+        case io::file_type::directory:
+            copy_directory(ctx, pool, std::move(source), std::move(target), ec);
+            break;
 
-            if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
-            else io::create_char_device(target.path(), source.dev_type(), attr, ec);
+        case io::file_type::symlink:
+            copy_symlink(ctx, pool, std::move(source), std::move(target), ec);
+            break;
 
-            if (ec) ctx.add_error(ec, target.path());
-        }
-        else ctx.add_error("Skipping device file", source.path());
-    }
-    ////////////////////
-    else if (source.is_special())
-    {
-        if (ctx.keep_special)
-        {
-            io::attrib attr;
-            if (ctx.keep_group) attr.gid = source.gid();
-            if (ctx.keep_mode ) attr.mode= source.mode();
-            if (ctx.keep_time ) attr.time= source.time();
-            if (ctx.keep_user ) attr.uid = source.uid();
+        case io::file_type::block:
+        case io::file_type::character:
+            copy_device(ctx, pool, std::move(source), std::move(target), ec);
+            break;
 
-            if (should_replace(ctx, target)) io::remove(target.path(), ec);
+        case io::file_type::fifo:
+        case io::file_type::socket:
+            copy_special(ctx, pool, std::move(source), std::move(target), ec);
+            break;
 
-            if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
-            else io::create_socket(target.path(), attr, ec);
+        case io::file_type::not_found:
+            ctx.add_error("Source does not exist", source.path());
+            ec = std::make_error_code(std::errc::no_such_file_or_directory);
+            break;
 
-            if (ec) ctx.add_error(ec, target.path());
-        }
-        else ctx.add_error("Skipping special file", source.path());
-    }
-    ////////////////////
-    else if (!source.exists())
-    {
-        ctx.add_error("Source does not exist", source.path());
-        ec = std::make_error_code(std::errc::no_such_file_or_directory);
-    }
-    else
-    {
-        ctx.add_error("Skipping unknown file", source.path());
-        ec = std::make_error_code(std::errc::not_supported);
+        default:
+            ctx.add_error("Skipping unknown file", source.path());
+            ec = std::make_error_code(std::errc::not_supported);
+            break;
     }
 }
 
