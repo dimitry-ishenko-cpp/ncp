@@ -59,6 +59,17 @@ std::optional<int> parse(std::string_view text)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+enum attr_option { include_all, exclude_mode, exclude_time };
+auto get_attr(context& ctx, const io::file& source, attr_option option = include_all)
+{
+    io::attrib attr;
+    if (ctx.keep_group) attr.gid = source.gid();
+    if (ctx.keep_mode && option != exclude_mode) attr.mode= source.mode();
+    if (ctx.keep_time && option != exclude_time) attr.time= source.time();
+    if (ctx.keep_user ) attr.uid = source.uid();
+    return attr;
+}
+
 void copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
@@ -68,13 +79,8 @@ void copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
     {
         if (ctx.quit.load(std::memory_order_relaxed)) return;
 
-        io::attrib attr;
-        if (ctx.keep_group) attr.gid = source.gid();
-        if (ctx.keep_mode ) attr.mode= source.mode();
-        if (ctx.keep_time ) attr.time= source.time();
-        if (ctx.keep_user ) attr.uid = source.uid();
-
         std::error_code ec;
+        auto attr = get_attr(ctx, source);
         io::copy_file(source, target, attr, ec);
         if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
 
@@ -85,11 +91,7 @@ void copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
 
 void copy_directory(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
 {
-    io::attrib attr;
-    if (ctx.keep_group) attr.gid = source.gid();
-    if (ctx.keep_mode ) attr.mode= source.mode();
-    if (ctx.keep_user ) attr.uid = source.uid();
-
+    auto attr = get_attr(ctx, source, exclude_time);
     io::create_directory(target.path(), attr, ec);
     if (ec) { ctx.add_error(ec, target.path()); return; }
 
@@ -101,11 +103,7 @@ void copy_symlink(context& ctx, asio::thread_pool& pool, io::file source, io::fi
     auto link_target = source.get_target_path(ec);
     if (!ec)
     {
-        io::attrib attr;
-        if (ctx.keep_group) attr.gid = source.gid();
-        if (ctx.keep_time ) attr.time= source.time();
-        if (ctx.keep_user ) attr.uid = source.uid();
-
+        auto attr = get_attr(ctx, source, exclude_mode);
         io::create_symlink(link_target, target.path(), attr, ec);
         if (ec) ctx.add_error(ec, target.path(), link_target);
     }
@@ -116,15 +114,9 @@ void copy_device(context& ctx, asio::thread_pool& pool, io::file source, io::fil
 {
     if (ctx.keep_devices)
     {
-        io::attrib attr;
-        if (ctx.keep_group) attr.gid = source.gid();
-        if (ctx.keep_mode ) attr.mode= source.mode();
-        if (ctx.keep_time ) attr.time= source.time();
-        if (ctx.keep_user ) attr.uid = source.uid();
-
+        auto attr = get_attr(ctx, source);
         if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
         else io::create_char_device(target.path(), source.dev_type(), attr, ec);
-
         if (ec) ctx.add_error(ec, target.path());
     }
     else ctx.add_error("Skipping device file", source.path());
@@ -134,15 +126,9 @@ void copy_special(context& ctx, asio::thread_pool& pool, io::file source, io::fi
 {
     if (ctx.keep_special)
     {
-        io::attrib attr;
-        if (ctx.keep_group) attr.gid = source.gid();
-        if (ctx.keep_mode ) attr.mode= source.mode();
-        if (ctx.keep_time ) attr.time= source.time();
-        if (ctx.keep_user ) attr.uid = source.uid();
-
+        auto attr = get_attr(ctx, source);
         if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
         else io::create_socket(target.path(), attr, ec);
-
         if (ec) ctx.add_error(ec, target.path());
     }
     else ctx.add_error("Skipping special file", source.path());
