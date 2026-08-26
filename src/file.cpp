@@ -16,10 +16,19 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <sys/ioctl.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
+
+#if defined(__linux__)
+#  include <linux/fs.h>
+#elif defined(__APPLE__)
+#  include <sys/disk.h>
+#elif defined(__FreeBSD__)
+#  include <sys/disk.h>
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
@@ -27,6 +36,12 @@ namespace io
 
 namespace
 {
+
+struct auto_close
+{
+    int fd = -1;
+    ~auto_close() { if (fd != -1) ::close(fd); }
+};
 
 inline bool chmod(const path& path, const attrib& attr) {
     return !attr.mode || 0 == ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode));
@@ -81,7 +96,25 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
         else if (S_ISSOCK(st.st_mode)) type_ = file_type::socket;
         else type_ = file_type::unknown;
 
-        size_ = st.st_size;
+        if (type_ == file_type::block)
+        {
+            auto_close dev{ ::open(path_.c_str(), O_RDONLY | O_CLOEXEC) };
+            if (dev.fd >= 0)
+            {
+#if defined(__linux__)
+                uint64_t bytes = 0;
+                if (0 == ::ioctl(dev.fd, BLKGETSIZE64, &bytes)) size_ = bytes;
+#elif defined(__APPLE__)
+                uint32_t block_size = 0, block_count = 0;
+                if (0 == ::ioctl(dev.fd, DKIOCGETBLOCKSIZE, &block_size) &&
+                    0 == ::ioctl(dev.fd, DKIOCGETBLOCKCOUNT, &block_count)) size_ = block_size * block_count;
+#elif defined(__FreeBSD__)
+                off_t bytes = 0;
+                if (::ioctl(dev.fd, DIOCGMEDIASIZE, &bytes) == 0) size_ = bytes;
+#endif
+            }
+        }
+        else size_ = st.st_size;
         mode_ = static_cast<io::mode>(st.st_mode & 07777);
         gid_  = st.st_gid;
         uid_  = st.st_uid;
@@ -149,11 +182,6 @@ bool can_read(const path& path, std::error_code& ec) noexcept
 ////////////////////////////////////////////////////////////////////////////////
 void copy_file(const file& source, const file& target, const attrib& attr, std::error_code& ec)
 {
-    struct auto_close
-    {
-        int fd = -1;
-        ~auto_close() { if (fd != -1) ::close(fd); }
-    };
     constexpr file_size chunk_size = 4 * 1024 * 1024;
 
     auto_close in { ::open(source.path().c_str(), O_RDONLY | O_CLOEXEC) };
