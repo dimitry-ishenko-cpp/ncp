@@ -276,7 +276,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
             auto target_ = target;
-            if (source.path().has_filename()) // trailing_slash
+            if (source.path().has_filename())
             {
                 std::error_code ec;
                 target_ = io::file{target.path() / source.path().filename(), ec};
