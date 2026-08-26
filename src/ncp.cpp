@@ -134,7 +134,7 @@ void copy_special(context& ctx, asio::thread_pool& pool, io::file source, io::fi
     else ctx.add_error("Skipping special file", source.path());
 }
 
-void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk, std::error_code& ec)
 {
     if (target == source)
     {
@@ -157,12 +157,14 @@ void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
 
         case io::file_type::block:
         case io::file_type::character:
-            copy_device(ctx, pool, std::move(source), std::move(target), ec);
+            if (from_walk) copy_device(ctx, pool, std::move(source), std::move(target), ec);
+            else copy_regular_file(ctx, pool, std::move(source), std::move(target), ec);
             break;
 
         case io::file_type::fifo:
         case io::file_type::socket:
-            copy_special(ctx, pool, std::move(source), std::move(target), ec);
+            if (from_walk) copy_special(ctx, pool, std::move(source), std::move(target), ec);
+            else copy_regular_file(ctx, pool, std::move(source), std::move(target), ec);
             break;
 
         case io::file_type::not_found:
@@ -217,7 +219,7 @@ void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::fil
     }
 
     std::error_code ec;
-    copy_entry(ctx, pool, source, target, ec);
+    copy_entry(ctx, pool, source, target, false, ec);
 
     if (!ec && source.is_directory())
         for (auto&& source_child : walk_tree(ctx, source))
@@ -228,7 +230,7 @@ void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::fil
             io::file target_child{ target.path() / name, ec };
 
             if (ec) ctx.add_error(ec, target_child.path());
-            else copy_entry(ctx, pool, std::move(source_child), std::move(target_child), ec);
+            else copy_entry(ctx, pool, std::move(source_child), std::move(target_child), true, ec);
         }
 }
 
