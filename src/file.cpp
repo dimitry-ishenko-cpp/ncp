@@ -162,29 +162,29 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
     auto_close out{ ::open(target.path().c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
     if (out.fd < 0) { ec = make_error_code(errno); return; }
 
-    auto remain = source.size();
+    bool done = false;
 
     // try copy_file_range
-    while (remain)
+    while (!done)
     {
-        auto copied = ::copy_file_range(in.fd, nullptr, out.fd, nullptr, std::min(remain, chunk_size), 0);
+        auto copied = ::copy_file_range(in.fd, nullptr, out.fd, nullptr, chunk_size, 0);
         if (copied < 0)
         {
             if (errno == EINTR) continue;
             // not supported
-            if (errno == ENOSYS || errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
+            if (errno == EINVAL || errno == ENOSYS || errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
 
             ec = make_error_code(errno);
             return;
         }
-        else if (copied > 0) remain -= copied;
-        else remain = 0; // file shrunk?
+        else if (copied > 0) /* TODO */;
+        else done = true;
     }
 
     // try sendfile
-    while (remain)
+    while (!done)
     {
-        auto copied = ::sendfile(out.fd, in.fd, nullptr, std::min(remain, chunk_size));
+        auto copied = ::sendfile(out.fd, in.fd, nullptr, chunk_size);
         if (copied < 0)
         {
             if (errno == EINTR) continue;
@@ -194,17 +194,17 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
             ec = make_error_code(errno);
             return;
         }
-        else if (copied > 0) remain -= copied;
-        else remain = 0; // file shrunk?
+        else if (copied > 0) /* TODO */;
+        else done = true;
     }
 
     // try read/write
-    if (remain)
+    if (!done)
     {
         auto buf = std::make_unique_for_overwrite<char[]>(chunk_size);
         do
         {
-            auto rn = ::read(in.fd, buf.get(), std::min(remain, chunk_size));
+            auto rn = ::read(in.fd, buf.get(), chunk_size);
             if (rn < 0)
             {
                 if (errno == EINTR) continue;
@@ -224,12 +224,12 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
                         ec = make_error_code(errno);
                         return;
                     }
-                    else rn -= wn, p += wn, remain -= wn;
+                    else rn -= wn, p += wn;
                 }
             }
-            else remain = 0; // file shrunk?
+            else done = true;
         }
-        while (remain);
+        while (!done);
     }
 
     if ((attr.uid || attr.gid) && ::fchown(out.fd, attr.uid.value_or(-1), attr.gid.value_or(-1)))
