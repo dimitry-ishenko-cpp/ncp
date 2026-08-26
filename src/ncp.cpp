@@ -279,7 +279,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
             if (source.path().has_filename()) // trailing_slash
             {
                 std::error_code ec;
-                target_ = io::file{target.path() / source.path().filename(), io::follow_symlinks, ec};
+                target_ = io::file{target.path() / source.path().filename(), ec};
                 if (ec) throw io::exception{"copy_sources", target_.path(), ec};
             }
 
