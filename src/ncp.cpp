@@ -81,11 +81,14 @@ void copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
 
         std::error_code ec;
         auto attr = get_attr(ctx, source);
-        io::copy_file(source, target, attr, ec);
+        auto cb = [&ctx](io::file_size copied) {
+            ctx.bytes_copied.fetch_add(copied, std::memory_order_relaxed);
+            return !ctx.quit.load(std::memory_order_relaxed);
+        };
+        io::copy_file(source, target, attr, cb, ec);
         if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
 
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-        ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
     });
 }
 
