@@ -38,7 +38,7 @@ struct context
     bool keep_special = false;
 
     bool recursive = false;
-    unlink unlink_ = unlink::auto_;
+    unlink unlink_ = unlink::never;
     update update_ = update::all;
 
     ////////////////////

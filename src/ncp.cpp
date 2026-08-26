@@ -368,7 +368,7 @@ try
 
     pgm::args args
     {
-        { "-a", "--archive",        "Archive mode (equivalent to -rmotD)."              },
+        { "-a", "--archive",        "Archive mode (equivalent to -rmotD --unlink=auto)."},
         { "-D",                     "Same as --special --devices."                      },
         {       "--devices",        "Preserve device files."                            },
         { "-F", "--follow-dest-links", "Dereference destination symlinks."              },
@@ -376,7 +376,7 @@ try
                                     "Unlink destination before writing. [when] can be one of:\n"
                                     "'never', 'always' or 'auto'.\n"
                                     "If [when] is omitted, 'always' is assumed.\n"
-                                    "If the option is omitted entirely, 'auto' is used."},
+                                    "If the option is omitted entirely, 'never' is used." },
         { "-g", "--group",          "Preserve group ownership."                         },
         { "-h", "--help",           "Show this help message and exit."                  },
         { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
@@ -462,6 +462,7 @@ try
             ctx.keep_time  = true;
             ctx.keep_user  = true;
             ctx.recursive  = true;
+            ctx.unlink_ = unlink::auto_;
         }
         if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
         if (args["--devices"]) ctx.keep_devices = true;
