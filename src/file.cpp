@@ -16,19 +16,12 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <linux/fs.h>
 #include <sys/ioctl.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
-
-#if defined(__linux__)
-#  include <linux/fs.h>
-#elif defined(__APPLE__)
-#  include <sys/disk.h>
-#elif defined(__FreeBSD__)
-#  include <sys/disk.h>
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
@@ -101,17 +94,8 @@ file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
             auto_close dev{ ::open(path_.c_str(), O_RDONLY | O_CLOEXEC) };
             if (dev.fd >= 0)
             {
-#if defined(__linux__)
                 uint64_t bytes = 0;
                 if (0 == ::ioctl(dev.fd, BLKGETSIZE64, &bytes)) size_ = bytes;
-#elif defined(__APPLE__)
-                uint32_t block_size = 0, block_count = 0;
-                if (0 == ::ioctl(dev.fd, DKIOCGETBLOCKSIZE, &block_size) &&
-                    0 == ::ioctl(dev.fd, DKIOCGETBLOCKCOUNT, &block_count)) size_ = block_size * block_count;
-#elif defined(__FreeBSD__)
-                off_t bytes = 0;
-                if (::ioctl(dev.fd, DIOCGMEDIASIZE, &bytes) == 0) size_ = bytes;
-#endif
             }
         }
         else size_ = st.st_size;
