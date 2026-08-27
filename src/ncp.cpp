@@ -369,7 +369,11 @@ void update_dirs(context& ctx)
     {
         std::error_code ec;
         io::modify(path, attr, ec);
-        if (ec) ctx.add_error(ec, path);
+        if (ec)
+        {
+            ctx.files_copied.fetch_sub(1, std::memory_order_relaxed);
+            ctx.add_error(ec, path);
+        }
     }
 }
 
