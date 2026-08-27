@@ -404,7 +404,7 @@ void print_status(context& ctx)
     static double smooth = 0;
     auto current = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
     if (ctx.quit.load(std::memory_order_relaxed)) smooth = current;
-    else smooth += (current - smooth) * 0.2;
+    else smooth += (current - smooth) * 0.3;
 
     auto percent_copied = static_cast<long>(smooth);
 
