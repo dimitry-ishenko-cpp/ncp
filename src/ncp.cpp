@@ -153,7 +153,7 @@ bool copy_directory(context& ctx, io::file source, io::file target)
     if (need_create || ctx.update_ != update::none)
     {
         auto attr = get_attr(ctx, source, exclude_time);
-        ctx.dir_attrs.emplace_back(target.path(), attr);
+        ctx.add_dir_attr(target.path(), attr);
     }
 
     return true;
@@ -362,7 +362,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
 
 void update_dirs(context& ctx)
 {
-    for (auto&& [path, attr] : std::views::reverse(ctx.dir_attrs))
+    for (auto&& [path, attr] : std::views::reverse(ctx.dir_attrs()))
     {
         std::error_code ec;
         io::modify(path, attr, ec);

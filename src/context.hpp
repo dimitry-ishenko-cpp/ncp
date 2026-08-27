@@ -48,8 +48,6 @@ struct context
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
 
-    std::vector< std::tuple<io::path, io::attrib> > dir_attrs;
-
     bool add_error(std::string msg, const io::path& path1 = {}, const io::path& path2 = {})
     {
         if (!path1.empty()) msg += std::format(": {}", path1.string());
@@ -80,8 +78,16 @@ struct context
         return error_free_;
     }
 
+    void add_dir_attr(io::path path, io::attrib attr) {
+        dir_attrs_.emplace_back(std::move(path), std::move(attr));
+    }
+
+    auto& dir_attrs() const { return dir_attrs_; }
+
 private:
     std::mutex mutex_;
     std::vector<std::string> errors_;
     bool error_free_ = true;
+
+    std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
 };
