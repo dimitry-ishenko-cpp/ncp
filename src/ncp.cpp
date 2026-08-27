@@ -132,9 +132,12 @@ bool copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
 
 bool copy_directory(context& ctx, io::file source, io::file target)
 {
-    std::error_code ec;
-
     bool need_create = !target.exists() || !target.is_directory();
+    if (!need_create && ctx.update_ == update::none) return true;
+
+    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+
+    std::error_code ec;
     if (target.exists() && need_create)
     {
         if (ctx.unlink_ == unlink::never)
@@ -150,12 +153,10 @@ bool copy_directory(context& ctx, io::file source, io::file target)
         if (ec) return ctx.add_error(ec, target.path());
     }
 
-    if (need_create || ctx.update_ != update::none)
-    {
-        auto attr = get_attr(ctx, source, include_all);
-        ctx.add_dir_attr(target.path(), attr);
-    }
+    auto attr = get_attr(ctx, source, include_all);
+    ctx.add_dir_attr(target.path(), attr);
 
+    ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
@@ -165,8 +166,9 @@ bool copy_generic(context& ctx, io::file source, io::file target, attr_option op
 {
     if (target.exists() && ctx.update_ == update::none) return true;
 
-    std::error_code ec;
+    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
 
+    std::error_code ec;
     bool need_create = !target.exists() || !is_match(source, target) || ctx.unlink_ == unlink::always;
     if (target.exists() && need_create)
     {
@@ -183,6 +185,7 @@ bool copy_generic(context& ctx, io::file source, io::file target, attr_option op
 
     if (ec) return ctx.add_error(ec, target.path());
 
+    ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
