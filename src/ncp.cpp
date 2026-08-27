@@ -152,7 +152,7 @@ bool copy_directory(context& ctx, io::file source, io::file target)
 
     if (need_create || ctx.update_ != update::none)
     {
-        auto attr = get_attr(ctx, source, exclude_time);
+        auto attr = get_attr(ctx, source, include_all);
         ctx.add_dir_attr(target.path(), attr);
     }
 
