@@ -441,7 +441,7 @@ try
                                     "Unlink destination before writing. [when] can be one of:\n"
                                     "'never', 'always' or 'auto'.\n"
                                     "If [when] is omitted, 'always' is assumed.\n"
-                                    "If the option is omitted entirely, 'never' is used." },
+                                    "If the option is omitted entirely, 'auto' is used."},
         { "-g", "--group",          "Preserve group ownership."                         },
         { "-h", "--help",           "Show this help message and exit."                  },
         { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
