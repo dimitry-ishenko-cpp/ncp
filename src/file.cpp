@@ -254,11 +254,11 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
         while (copying);
     }
 
-    if ((attr.uid || attr.gid) && ::fchown(out.fd, attr.uid.value_or(-1), attr.gid.value_or(-1)))
-        ec = make_error_code(errno);
-    else if (attr.mode && ::fchmod(out.fd, static_cast<::mode_t>(*attr.mode)))
+    if (attr.mode && ::fchmod(out.fd, static_cast<::mode_t>(*attr.mode)))
         ec = make_error_code(errno);
     else if (attr.time && ::futimens(out.fd, mtime(*attr.time).data()))
+        ec = make_error_code(errno);
+    else if ((attr.uid || attr.gid) && ::fchown(out.fd, attr.uid.value_or(-1), attr.gid.value_or(-1)))
         ec = make_error_code(errno);
     else ec.clear();
 }
@@ -329,7 +329,7 @@ std::generator<std::expected<path, std::error_code>> directory_iterator(const pa
 
 void modify(const path& path, const attrib& attr, std::error_code& ec)
 {
-    if (chown(path, attr) && chmod(path, attr) && utime(path, attr)) ec.clear();
+    if (chmod(path, attr) && utime(path, attr) && chown(path, attr)) ec.clear();
     else ec = make_error_code(errno);
 }
 
