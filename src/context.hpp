@@ -45,10 +45,10 @@ struct context
     std::atomic<bool> quit{ false };
     std::atomic<int> signal{0};
 
-    std::vector< std::tuple<io::path, io::time> > dir_times;
-
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
+
+    std::vector< std::tuple<io::path, io::attrib> > dir_attrs;
 
     bool add_error(std::string msg, const io::path& path1 = {}, const io::path& path2 = {})
     {

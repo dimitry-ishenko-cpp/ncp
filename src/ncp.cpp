@@ -130,15 +130,32 @@ bool copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
     return true;
 }
 
-bool copy_directory(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+bool copy_directory(context& ctx, io::file source, io::file target)
 {
     std::error_code ec;
-    auto attr = get_attr(ctx, source, exclude_time);
 
-    io::create_directory(target.path(), attr, ec);
-    if (ec) return ctx.add_error(ec, target.path());
+    bool need_create = !target.exists() || !target.is_directory();
+    if (target.exists() && need_create)
+    {
+        if (ctx.unlink_ == unlink::never)
+            return ctx.add_error("Not replacing existing non-directory", target.path());
 
-    if (ctx.keep_time) ctx.dir_times.emplace_back(target.path(), source.time());
+        io::remove(target.path(), ec);
+        if (ec) return ctx.add_error(ec, target.path());
+    }
+
+    if (need_create)
+    {
+        io::create_directory(target.path(), ec);
+        if (ec) return ctx.add_error(ec, target.path());
+    }
+
+    if (need_create || ctx.update_ != update::none)
+    {
+        auto attr = get_attr(ctx, source, exclude_time);
+        ctx.dir_attrs.emplace_back(target.path(), attr);
+    }
+
     return true;
 }
 
@@ -228,7 +245,7 @@ bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
             return copy_regular_file(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::directory:
-            return copy_directory(ctx, pool, std::move(source), std::move(target));
+            return copy_directory(ctx, std::move(source), std::move(target));
 
         case io::file_type::symlink:
             return copy_symlink(ctx, std::move(source), std::move(target));
@@ -337,10 +354,10 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
 
 void update_dirs(context& ctx)
 {
-    for (auto&& [path, time] : ctx.dir_times)
+    for (auto&& [path, attr] : ctx.dir_attrs)
     {
         std::error_code ec;
-        io::modify(path, io::attrib{.time = time}, ec);
+        io::modify(path, attr, ec);
         if (ec) ctx.add_error(ec, path);
     }
 }
