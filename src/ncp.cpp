@@ -106,19 +106,6 @@ bool copy_directory(context& ctx, asio::thread_pool& pool, io::file source, io::
     return true;
 }
 
-bool copy_symlink(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
-{
-    std::error_code ec;
-    auto link_target = source.get_target_path(ec);
-    if (ec) return ctx.add_error(ec, source.path());
-
-    auto attr = get_attr(ctx, source, exclude_mode);
-    io::create_symlink(link_target, target.path(), attr, ec);
-    if (ec) return ctx.add_error(ec, target.path(), link_target);
-
-    return true;
-}
-
 template <typename MatchFn, typename CreateFn>
 bool copy_generic(context& ctx, io::file source, io::file target, attr_option option,
     MatchFn&& is_match, CreateFn&& create)
@@ -144,6 +131,22 @@ bool copy_generic(context& ctx, io::file source, io::file target, attr_option op
     if (ec) return ctx.add_error(ec, target.path());
 
     return true;
+}
+
+bool copy_symlink(context& ctx, io::file source, io::file target)
+{
+    std::error_code ec;
+    auto link_target = source.get_target_path(ec);
+    if (ec) return ctx.add_error(ec, source.path());
+
+    return copy_generic(ctx, std::move(source), std::move(target), exclude_mode,
+        [&link_target](auto&& src, auto&& tgt) {
+            std::error_code ec;
+            return tgt.get_target_path(ec) == link_target;
+        },
+        [&link_target](auto&& src, auto&& tgt, auto&& attr, std::error_code& ec) {
+            io::create_symlink(link_target, tgt.path(), attr, ec);
+        });
 }
 
 bool copy_device(context& ctx, io::file source, io::file target)
@@ -192,7 +195,7 @@ bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
             return copy_directory(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::symlink:
-            return copy_symlink(ctx, pool, std::move(source), std::move(target));
+            return copy_symlink(ctx, std::move(source), std::move(target));
 
         case io::file_type::block:
         case io::file_type::character:
