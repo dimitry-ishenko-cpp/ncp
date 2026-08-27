@@ -55,11 +55,11 @@ struct context
         if (!path1.empty()) msg += std::format(": {}", path1.string());
         if (!path2.empty()) msg += std::format(" => {}", path2.string());
 
-        std::lock_guard guard{mutex};
-        errors.push_back(std::move(msg));
-        ++error_count;
+        std::lock_guard guard{mutex_};
+        errors_.push_back(std::move(msg));
 
-        return false;
+        error_free_ = false;
+        return error_free_;
     }
     bool add_error(std::error_code ec, const auto&... path) {
         return add_error(std::format("{}", io::exception{"", path..., ec}));
@@ -70,18 +70,18 @@ struct context
 
     auto drain_errors()
     {
-        std::lock_guard guard{mutex};
-        return std::exchange(errors, {});
+        std::lock_guard guard{mutex_};
+        return std::exchange(errors_, {});
     }
 
-    auto get_error_count()
+    auto error_free()
     {
-        std::lock_guard guard{mutex};
-        return error_count;
+        std::lock_guard guard{mutex_};
+        return error_free_;
     }
 
 private:
-    std::mutex mutex;
-    std::vector<std::string> errors;
-    long error_count = 0;
+    std::mutex mutex_;
+    std::vector<std::string> errors_;
+    bool error_free_ = true;
 };

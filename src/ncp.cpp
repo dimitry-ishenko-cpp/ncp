@@ -597,7 +597,7 @@ try
         status_task.wait();
         print_status(ctx); // final status
 
-        exit_code = ctx.get_error_count() ? 2 : 0;
+        exit_code = ctx.error_free() ? 0 : 2;
     }
 
     return exit_code;
