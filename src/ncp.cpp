@@ -306,17 +306,19 @@ std::generator<io::file> walk_tree(context& ctx, const io::file& dir)
         else ctx.add_error(expected_path.error());
 }
 
-bool copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
     if (source.is_symlink() && !ctx.keep_links)
     {
         std::error_code ec;
         source = source.follow_symlinks(ec);
-        if (ec) return ctx.add_error(ec, source.path());
+        if (ec) { ctx.add_error(ec, source.path()); return; }
     }
 
-    if (source.is_directory() && !ctx.recursive)
-        return ctx.add_error("Skipping directory", source.path());
+    if (source.is_directory() && !ctx.recursive) {
+        ctx.add_error("Skipping directory", source.path());
+        return;
+    }
 
     auto res = copy_entry(ctx, pool, source, target, false);
     if (res && source.is_directory())
@@ -328,11 +330,9 @@ bool copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::fil
             auto name = source_child.path().lexically_relative(source.path());
             io::file target_child{ target.path() / name, ec };
 
-            if (ec) res &= ctx.add_error(ec, target_child.path());
-            else res &= copy_entry(ctx, pool, std::move(source_child), std::move(target_child), true);
+            if (ec) ctx.add_error(ec, target_child.path());
+            else copy_entry(ctx, pool, std::move(source_child), std::move(target_child), true);
         }
-
-    return res;
 }
 
 void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> sources, io::file target)
@@ -348,19 +348,14 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
             {
                 std::error_code ec;
                 target_ = io::file{target.path() / source.path().filename(), ec};
-                if (ec) throw io::exception{"copy_sources", target_.path(), ec};
+                if (ec) { ctx.add_error(ec, target.path()); continue; }
             }
-
             copy_source(ctx, pool, std::move(source), std::move(target_));
         }
     }
     else if (sources.size() == 1)
-    {
         copy_source(ctx, pool, std::move(sources.front()), std::move(target));
-    }
-    else throw io::exception{"copy_sources",
-        target.path(), std::make_error_code(std::errc::not_a_directory)
-    };
+    else ctx.add_error(std::make_error_code(std::errc::not_a_directory), target.path());
 }
 
 void update_dirs(context& ctx)
