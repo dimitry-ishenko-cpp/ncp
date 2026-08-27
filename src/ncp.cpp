@@ -348,7 +348,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
             {
                 std::error_code ec;
                 target_ = io::file{target.path() / source.path().filename(), ec};
-                if (ec) { ctx.add_error(ec, target.path()); continue; }
+                if (ec) { ctx.add_error(ec, target_.path()); continue; }
             }
             copy_source(ctx, pool, std::move(source), std::move(target_));
         }
@@ -494,7 +494,12 @@ try
         std::vector<io::file> sources;
         io::file target;
 
-        for (auto&& path : args["SOURCE"].values()) sources.emplace_back(path, ec);
+        for (auto&& path : args["SOURCE"].values())
+        {
+            io::file source{path, ec};
+            if (ec) ctx.add_error(ec, path);
+            else sources.push_back(std::move(source));
+        }
 
         if (args["DESTINATION"])
         {
