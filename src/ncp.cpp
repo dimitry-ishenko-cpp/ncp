@@ -406,7 +406,12 @@ void print_status(context& ctx)
     auto bytes_total  = ctx.bytes_total.load(std::memory_order_relaxed);
     auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
 
-    long percent_copied = bytes_total ? (100.0 * bytes_copied / bytes_total) : 0;
+    static double smooth = 0;
+    auto current = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
+    if (ctx.quit.load(std::memory_order_relaxed)) smooth = current;
+    else smooth += (current - smooth) * 0.2;
+
+    auto percent_copied = static_cast<long>(smooth);
 
     constexpr auto bar_width = 40;
     auto bar_fill = percent_copied * bar_width / 100;
