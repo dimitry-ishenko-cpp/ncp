@@ -362,7 +362,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
 
 void update_dirs(context& ctx)
 {
-    for (auto&& [path, attr] : ctx.dir_attrs)
+    for (auto&& [path, attr] : std::views::reverse(ctx.dir_attrs))
     {
         std::error_code ec;
         io::modify(path, attr, ec);
