@@ -60,7 +60,7 @@ std::optional<int> parse(std::string_view text)
 
 ////////////////////////////////////////////////////////////////////////////////
 enum attr_option { include_all, exclude_mode, exclude_time };
-auto get_attr(context& ctx, const io::file& source, attr_option option = include_all)
+auto get_attr(context& ctx, const io::file& source, attr_option option)
 {
     io::attrib attr;
     if (ctx.keep_group) attr.gid = source.gid();
@@ -237,7 +237,8 @@ bool copy_special(context& ctx, io::file source, io::file target)
 
 bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
 {
-    if (target == source) return ctx.add_error("Skipping same file", source.path(), target.path());
+    if (target == source)
+        return ctx.add_error("Skipping same file", source.path(), target.path());
 
     switch (source.type())
     {
