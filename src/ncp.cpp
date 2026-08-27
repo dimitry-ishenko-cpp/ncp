@@ -237,6 +237,13 @@ bool copy_special(context& ctx, io::file source, io::file target)
 
 bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
 {
+    if (ctx.follow_dest_links && target.is_symlink() && !source.is_symlink())
+    {
+        std::error_code ec;
+        target = target.follow_symlinks(ec);
+        if (ec) return ctx.add_error(ec, target.path());
+    }
+
     if (target == source)
         return ctx.add_error("Skipping same file", source.path(), target.path());
 
