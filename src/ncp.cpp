@@ -119,32 +119,64 @@ bool copy_symlink(context& ctx, asio::thread_pool& pool, io::file source, io::fi
     return true;
 }
 
-bool copy_device(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+template <typename MatchFn, typename CreateFn>
+bool copy_generic(context& ctx, io::file source, io::file target, attr_option option,
+    MatchFn&& is_match, CreateFn&& create)
 {
-    if (!ctx.keep_devices) return ctx.add_error("Skipping device file", source.path());
+    if (target.exists() && ctx.update_ == update::none) return true;
 
     std::error_code ec;
-    auto attr = get_attr(ctx, source);
 
-    if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
-    else io::create_char_device(target.path(), source.dev_type(), attr, ec);
+    bool need_create = !target.exists() || !is_match(source, target) || ctx.unlink_ == unlink::always;
+    if (target.exists() && need_create)
+    {
+        if (ctx.unlink_ == unlink::never)
+            return ctx.add_error("Not replacing existing file", target.path());
+
+        io::remove(target.path(), ec);
+        if (ec) return ctx.add_error(ec, target.path());
+    }
+
+    auto attr = get_attr(ctx, source, option);
+    if (need_create) create(source, target, attr, ec);
+    else io::modify(target.path(), attr, ec);
+
     if (ec) return ctx.add_error(ec, target.path());
 
     return true;
 }
 
-bool copy_special(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+bool copy_device(context& ctx, io::file source, io::file target)
 {
-    if (!ctx.keep_special) return ctx.add_error("Skipping special file", source.path());
+    if (!ctx.keep_devices) 
+        return ctx.add_error("Skipping device file", source.path()); 
 
-    std::error_code ec;
-    auto attr = get_attr(ctx, source);
+    return copy_generic(ctx, std::move(source), std::move(target), include_all,
+        [](auto&& src, auto&& tgt) { 
+            return tgt.type() == src.type() && tgt.dev_type() == src.dev_type(); 
+        },
+        [](auto&& src, auto&& tgt, auto&& attr, std::error_code& ec) {
+            if (src.is_block_device())
+                io::create_block_device(tgt.path(), src.dev_type(), attr, ec);
+            else io::create_char_device(tgt.path(), src.dev_type(), attr, ec);
+        }
+    );
+}
 
-    if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
-    else io::create_socket(target.path(), attr, ec);
-    if (ec) return ctx.add_error(ec, target.path());
+bool copy_special(context& ctx, io::file source, io::file target)
+{
+    if (!ctx.keep_special) 
+        return ctx.add_error("Skipping special file", source.path()); 
 
-    return true;
+    return copy_generic(ctx, std::move(source), std::move(target), include_all,
+        [](auto&& src, auto&& tgt) {
+            return tgt.type() == src.type();
+        },
+        [](auto&& src, auto&& tgt, auto&& attr, std::error_code& ec) {
+            if (src.is_fifo())
+                io::create_fifo(tgt.path(), attr, ec);
+            else io::create_socket(tgt.path(), attr, ec);
+        });
 }
 
 bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
@@ -164,16 +196,16 @@ bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
 
         case io::file_type::block:
         case io::file_type::character:
-            if (from_walk) return copy_device(ctx, pool, std::move(source), std::move(target));
+            if (from_walk) return copy_device(ctx, std::move(source), std::move(target));
             else return copy_regular_file(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::fifo:
-            if (from_walk) return copy_special(ctx, pool, std::move(source), std::move(target));
+            if (from_walk) return copy_special(ctx, std::move(source), std::move(target));
             else return copy_regular_file(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::socket:
-            if (from_walk) return copy_special(ctx, pool, std::move(source), std::move(target));
-            else return ctx.add_error("Cannot copy from a socket", source.path());
+            if (from_walk) return copy_special(ctx, std::move(source), std::move(target));
+            else return ctx.add_error("Cannot copy from socket", source.path());
 
         case io::file_type::not_found:
             return ctx.add_error("Source does not exist", source.path());
