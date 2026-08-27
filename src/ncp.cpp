@@ -320,8 +320,8 @@ void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::fil
         return;
     }
 
-    auto res = copy_entry(ctx, pool, source, target, false);
-    if (res && source.is_directory())
+    auto success = copy_entry(ctx, pool, std::as_const(source), std::as_const(target), false);
+    if (success && source.is_directory())
         for (auto&& source_child : walk_tree(ctx, source))
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
@@ -343,14 +343,14 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
-            auto target_ = target;
+            auto real_target = target;
             if (source.path().has_filename())
             {
                 std::error_code ec;
-                target_ = io::file{target.path() / source.path().filename(), ec};
-                if (ec) { ctx.add_error(ec, target_.path()); continue; }
+                real_target = io::file{target.path() / source.path().filename(), ec};
+                if (ec) { ctx.add_error(ec, real_target.path()); continue; }
             }
-            copy_source(ctx, pool, std::move(source), std::move(target_));
+            copy_source(ctx, pool, std::move(source), std::move(real_target));
         }
     }
     else if (sources.size() == 1)
