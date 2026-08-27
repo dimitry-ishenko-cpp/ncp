@@ -118,15 +118,9 @@ bool can_read(const path&, std::error_code&) noexcept;
 
 using progress_callback = std::function<bool(file_size copied)>;
 
-void copy_file(const file&, const file&, const attrib&, progress_callback, std::error_code&);
-inline void copy_file(const file& source, const file& target, progress_callback cb, std::error_code& ec) {
-    io::copy_file(source, target, {}, cb, ec);
-}
-inline void copy_file(const file& source, const file& target, const attrib& attr, std::error_code& ec) {
-    io::copy_file(source, target, attr, {}, ec);
-}
-inline void copy_file(const file& source, const file& target, std::error_code& ec) {
-    io::copy_file(source, target, {}, {}, ec);
+void copy_file(const file&, const file&, const attrib&, std::error_code&, const progress_callback& = {});
+inline void copy_file(const file& source, const file& target, std::error_code& ec, const progress_callback& cb = {}) {
+    io::copy_file(source, target, {}, ec, cb);
 }
 
 void create_block_device(const path&, dev, const attrib&, std::error_code&) noexcept;

@@ -180,7 +180,7 @@ bool can_read(const path& path, std::error_code& ec) noexcept
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_file(const file& source, const file& target, const attrib& attr, progress_callback cb, std::error_code& ec)
+void copy_file(const file& source, const file& target, const attrib& attr, std::error_code& ec, const progress_callback& cb)
 {
     constexpr file_size chunk_size = 4 * 1024 * 1024;
 

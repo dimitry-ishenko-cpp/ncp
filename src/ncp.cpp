@@ -72,24 +72,60 @@ auto get_attr(context& ctx, const io::file& source, attr_option option = include
 
 bool copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
+    if (target.exists() && ctx.update_ == update::none) return true;
+
+    bool is_match = false;
+    if (target.is_regular_file()) switch (ctx.update_)
+    {
+        case update::older:   is_match = target.time() >= source.time(); break;
+        case update::size:    is_match = target.size() == source.size(); break;
+        case update::changed: is_match = target.size() == source.size() && target.time() == source.time(); break;
+        default:              is_match = false; break;
+    }
+
+    std::error_code ec;
+
+    bool need_create = !target.exists() || !is_match || ctx.unlink_ == unlink::always;
+    if (target.exists() && need_create)
+    {
+        if (ctx.unlink_ == unlink::never)
+            return ctx.add_error("Not replacing existing file", target.path());
+
+        io::remove(target.path(), ec);
+        if (ec) return ctx.add_error(ec, target.path());
+    }
+
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
     ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
 
-    asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+    if (need_create)
     {
-        if (ctx.quit.load(std::memory_order_relaxed)) return;
+        asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+        {
+            if (ctx.quit.load(std::memory_order_relaxed)) return;
 
-        std::error_code ec;
-        auto attr = get_attr(ctx, source);
-        auto cb = [&ctx](io::file_size copied) {
-            ctx.bytes_copied.fetch_add(copied, std::memory_order_relaxed);
-            return !ctx.quit.load(std::memory_order_relaxed);
-        };
-        io::copy_file(source, target, attr, cb, ec);
+            std::error_code ec;
+            auto attr = get_attr(ctx, source, include_all);
+            io::copy_file(source, target, attr, ec,
+                [&ctx](io::file_size copied)
+                {
+                    ctx.bytes_copied.fetch_add(copied, std::memory_order_relaxed);
+                    return !ctx.quit.load(std::memory_order_relaxed);
+                });
 
-        if (ec) ctx.add_error(ec, source.path(), target.path());
-        else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-    });
+            if (ec) ctx.add_error(ec, source.path(), target.path());
+            else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        });
+    }
+    else
+    {
+        auto attr = get_attr(ctx, source, include_all);
+        io::modify(target.path(), attr, ec);
+        if (ec) return ctx.add_error(ec, target.path());
+        
+        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
+    }
 
     return true;
 }
