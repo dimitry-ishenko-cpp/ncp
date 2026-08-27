@@ -70,7 +70,7 @@ auto get_attr(context& ctx, const io::file& source, attr_option option = include
     return attr;
 }
 
-void copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+bool copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
     ctx.bytes_total.fetch_add(source.size(), std::memory_order_relaxed);
@@ -86,107 +86,100 @@ void copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             return !ctx.quit.load(std::memory_order_relaxed);
         };
         io::copy_file(source, target, attr, cb, ec);
-        if (ec) { ctx.add_error(ec, source.path(), target.path()); return; }
 
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        if (ec) ctx.add_error(ec, source.path(), target.path());
+        else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     });
+
+    return true;
 }
 
-void copy_directory(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+bool copy_directory(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
+    std::error_code ec;
     auto attr = get_attr(ctx, source, exclude_time);
+
     io::create_directory(target.path(), attr, ec);
-    if (ec) { ctx.add_error(ec, target.path()); return; }
+    if (ec) return ctx.add_error(ec, target.path());
 
     if (ctx.keep_time) ctx.dir_times.emplace_back(target.path(), source.time());
+    return true;
 }
 
-void copy_symlink(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+bool copy_symlink(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
+    std::error_code ec;
     auto link_target = source.get_target_path(ec);
-    if (!ec)
-    {
-        auto attr = get_attr(ctx, source, exclude_mode);
-        io::create_symlink(link_target, target.path(), attr, ec);
-        if (ec) ctx.add_error(ec, target.path(), link_target);
-    }
-    else ctx.add_error(ec, source.path());
+    if (ec) return ctx.add_error(ec, source.path());
+
+    auto attr = get_attr(ctx, source, exclude_mode);
+    io::create_symlink(link_target, target.path(), attr, ec);
+    if (ec) return ctx.add_error(ec, target.path(), link_target);
+
+    return true;
 }
 
-void copy_device(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+bool copy_device(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
-    if (ctx.keep_devices)
-    {
-        auto attr = get_attr(ctx, source);
-        if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
-        else io::create_char_device(target.path(), source.dev_type(), attr, ec);
-        if (ec) ctx.add_error(ec, target.path());
-    }
-    else ctx.add_error("Skipping device file", source.path());
+    if (!ctx.keep_devices) return ctx.add_error("Skipping device file", source.path());
+
+    std::error_code ec;
+    auto attr = get_attr(ctx, source);
+
+    if (source.is_block_device()) io::create_block_device(target.path(), source.dev_type(), attr, ec);
+    else io::create_char_device(target.path(), source.dev_type(), attr, ec);
+    if (ec) return ctx.add_error(ec, target.path());
+
+    return true;
 }
 
-void copy_special(context& ctx, asio::thread_pool& pool, io::file source, io::file target, std::error_code& ec)
+bool copy_special(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
-    if (ctx.keep_special)
-    {
-        auto attr = get_attr(ctx, source);
-        if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
-        else io::create_socket(target.path(), attr, ec);
-        if (ec) ctx.add_error(ec, target.path());
-    }
-    else ctx.add_error("Skipping special file", source.path());
+    if (!ctx.keep_special) return ctx.add_error("Skipping special file", source.path());
+
+    std::error_code ec;
+    auto attr = get_attr(ctx, source);
+
+    if (source.is_fifo()) io::create_fifo(target.path(), attr, ec);
+    else io::create_socket(target.path(), attr, ec);
+    if (ec) return ctx.add_error(ec, target.path());
+
+    return true;
 }
 
-void copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk, std::error_code& ec)
+bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
 {
-    if (target == source)
-    {
-        ctx.add_error("Skipping same file", source.path(), target.path());
-        ec.clear();
-    }
-    else switch (source.type())
+    if (target == source) return ctx.add_error("Skipping same file", source.path(), target.path());
+
+    switch (source.type())
     {
         case io::file_type::regular:
-            copy_regular_file(ctx, pool, std::move(source), std::move(target), ec);
-            break;
+            return copy_regular_file(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::directory:
-            copy_directory(ctx, pool, std::move(source), std::move(target), ec);
-            break;
+            return copy_directory(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::symlink:
-            copy_symlink(ctx, pool, std::move(source), std::move(target), ec);
-            break;
+            return copy_symlink(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::block:
         case io::file_type::character:
-            if (from_walk) copy_device(ctx, pool, std::move(source), std::move(target), ec);
-            else copy_regular_file(ctx, pool, std::move(source), std::move(target), ec);
-            break;
+            if (from_walk) return copy_device(ctx, pool, std::move(source), std::move(target));
+            else return copy_regular_file(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::fifo:
-            if (from_walk) copy_special(ctx, pool, std::move(source), std::move(target), ec);
-            else copy_regular_file(ctx, pool, std::move(source), std::move(target), ec);
-            break;
+            if (from_walk) return copy_special(ctx, pool, std::move(source), std::move(target));
+            else return copy_regular_file(ctx, pool, std::move(source), std::move(target));
 
         case io::file_type::socket:
-            if (from_walk) copy_special(ctx, pool, std::move(source), std::move(target), ec);
-            else 
-            {
-                ctx.add_error("Cannot copy from a socket", source.path());
-                ec = std::make_error_code(std::errc::operation_not_supported);
-            }
-            break;
+            if (from_walk) return copy_special(ctx, pool, std::move(source), std::move(target));
+            else return ctx.add_error("Cannot copy from a socket", source.path());
 
         case io::file_type::not_found:
-            ctx.add_error("Source does not exist", source.path());
-            ec = std::make_error_code(std::errc::no_such_file_or_directory);
-            break;
+            return ctx.add_error("Source does not exist", source.path());
 
         default:
-            ctx.add_error("Skipping unknown file", source.path());
-            ec = std::make_error_code(std::errc::not_supported);
-            break;
+            return ctx.add_error("Skipping unknown file", source.path());
     }
 }
 
@@ -214,35 +207,33 @@ std::generator<io::file> walk_tree(context& ctx, const io::file& dir)
         else ctx.add_error(expected_path.error());
 }
 
-void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+bool copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
     if (source.is_symlink() && !ctx.keep_links)
     {
         std::error_code ec;
         source = source.follow_symlinks(ec);
-        if (ec) { ctx.add_error(ec, source.path()); return; }
+        if (ec) return ctx.add_error(ec, source.path());
     }
 
     if (source.is_directory() && !ctx.recursive)
-    {
-        ctx.add_error("Skipping directory", source.path());
-        return;
-    }
+        return ctx.add_error("Skipping directory", source.path());
 
-    std::error_code ec;
-    copy_entry(ctx, pool, source, target, false, ec);
-
-    if (!ec && source.is_directory())
+    auto res = copy_entry(ctx, pool, source, target, false);
+    if (res && source.is_directory())
         for (auto&& source_child : walk_tree(ctx, source))
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
+            std::error_code ec;
             auto name = source_child.path().lexically_relative(source.path());
             io::file target_child{ target.path() / name, ec };
 
-            if (ec) ctx.add_error(ec, target_child.path());
-            else copy_entry(ctx, pool, std::move(source_child), std::move(target_child), true, ec);
+            if (ec) res &= ctx.add_error(ec, target_child.path());
+            else res &= copy_entry(ctx, pool, std::move(source_child), std::move(target_child), true);
         }
+
+    return res;
 }
 
 void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> sources, io::file target)
