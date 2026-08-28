@@ -153,6 +153,8 @@ void modify(const path&, const attrib&, std::error_code&) noexcept;
 
 void remove(const path&, std::error_code&) noexcept;
 
+void rename(const path&, const path&, std::error_code&) noexcept;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
