@@ -137,7 +137,7 @@ struct context
         for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
 
         std::lock_guard lock{print_mutex_};
-        for (auto&& e : errors_) print_impl(retain, "{}\n", e);
+        for (auto&& e : errors) print_impl(retain, "{}\n", e);
 
         if (auto s = signal.exchange(0))
             print_impl(retain, "Received signal {}, exiting...\n", s);
