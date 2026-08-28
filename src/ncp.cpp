@@ -114,6 +114,19 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
 
     if (need_create)
     {
+        if (ctx.move)
+        {
+            io::rename(source.path(), target.path(), ec);
+            if (!ec)
+            {
+                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+                ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
+                if (ctx.verbose) ctx.print_action(source.path(), target.path());
+
+                return status::copied;
+            }
+        }
+
         asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
         {
             if (ctx.quit.load(std::memory_order_relaxed)) return;
@@ -127,12 +140,18 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
                     return !ctx.quit.load(std::memory_order_relaxed);
                 });
 
-            if (ec) fail(ctx, ec, source.path(), target.path());
-            else
+            if (!ec)
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
                 if (ctx.verbose) ctx.print_action(source.path(), target.path());
+
+                if (ctx.move)
+                {
+                    io::remove(source.path(), ec);
+                    if (ec) fail(ctx, ec, source.path());
+                }
             }
+            else fail(ctx, ec, source.path(), target.path());
         });
     }
     else
@@ -144,6 +163,12 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
         ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
         if (ctx.verbose) ctx.print_action(io::path{}, target.path());
+
+        if (ctx.move)
+        {
+            io::remove(source.path(), ec);
+            if (ec) fail(ctx, ec, source.path());
+        }
     }
 
     return status::copied;
@@ -180,6 +205,9 @@ auto copy_directory(context& ctx, io::file source, io::file target)
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     if (ctx.verbose) ctx.print_action(need_create ? source.path() : io::path{}, target.path());
+
+    if (ctx.move) ctx.add_rmdir(source.path());
+
     return status::copied;
 }
 
@@ -206,13 +234,33 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
     }
 
     auto attr = get_attr(ctx, source, option);
-    if (need_create) create(source, target, attr, ec);
+    if (need_create)
+    {
+        if (ctx.move)
+        {
+            io::rename(source.path(), target.path(), ec);
+            if (!ec)
+            {
+                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+                if (ctx.verbose) ctx.print_action(source.path(), target.path());
+                return status::copied;
+            }
+        }
+        create(source, target, attr, ec);
+    }
     else io::modify(target.path(), attr, ec);
 
     if (ec) return fail(ctx, ec, target.path());
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     if (ctx.verbose) ctx.print_action(need_create ? source.path() : io::path{}, target.path());
+
+    if (ctx.move)
+    {
+        io::remove(source.path(), ec);
+        if (ec) fail(ctx, ec, source.path());
+    }
+
     return status::copied;
 }
 
@@ -388,17 +436,23 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
     else fail(ctx, std::make_error_code(std::errc::not_a_directory), target.path());
 }
 
-void update_dirs(context& ctx)
+void process_dirs(context& ctx)
 {
+    std::error_code ec;
     for (auto&& [path, attr] : std::views::reverse(ctx.dir_attrs()))
     {
-        std::error_code ec;
         io::modify(path, attr, ec);
         if (ec)
         {
             ctx.files_copied.fetch_sub(1, std::memory_order_relaxed);
             fail(ctx, ec, path);
         }
+    }
+
+    for (auto&& path : std::views::reverse(ctx.rmdirs()))
+    {
+        io::remove_directory(path, ec);
+        if (ec) fail(ctx, ec, path);
     }
 }
 
@@ -437,6 +491,7 @@ try
         { "-i", "--interactive",    "Prompt before overwriting files."                  },
         { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
         { "-L", "--follow-links",   "Dereference source symlinks (default when non-recursive)." },
+        { "-M", "--move",           "Remove source files after copying."                },
         { "-m", "--mode",           "Preserve file permissions (mode bits)."            },
         { "-o", "--ownership",      "Same as --user --group."                           },
         { "-P", "--keep-links",     "Preserve source symlinks (default when recursive)."},
@@ -533,6 +588,7 @@ try
         if (args["--group"]) ctx.keep_group = true;
         if (args["--interactive"]) ctx.interactive = true;
         if (args["--mode"]) ctx.keep_mode = true;
+        if (args["--move"] || name == "nmv") ctx.move = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
         if (args["--progress"]) ctx.progress = true;
         if (args["--special"]) ctx.keep_special = true;
@@ -593,9 +649,13 @@ try
 
         copy_sources(ctx, pool, std::move(sources), std::move(target));
         pool.join();
-        update_dirs(ctx);
 
-        ctx.quit = true;
+        if (!ctx.quit) // don't process dirs on Ctrl+C
+        {
+            process_dirs(ctx);
+            ctx.quit = true;
+        }
+
         if (ctx.progress)
         {
             status_task.wait();

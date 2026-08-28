@@ -42,6 +42,7 @@ struct context
     bool keep_links = false;
     bool keep_special = false;
 
+    bool move = false;
     bool progress = false;
     bool recursive = false;
     unlink unlink_ = unlink::auto_;
