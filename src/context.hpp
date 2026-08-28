@@ -81,8 +81,10 @@ struct context
     void add_dir_attr(io::path path, io::attrib attr) {
         dir_attrs_.emplace_back(std::move(path), std::move(attr));
     }
+    auto& dir_attrs() const noexcept { return dir_attrs_; }
 
-    auto& dir_attrs() const { return dir_attrs_; }
+    void add_rmdir(io::path path) { rmdirs_.push_back(std::move(path)); }
+    auto& rmdirs() const noexcept { return rmdirs_; }
 
     ////////////////////
     bool confirm(std::string_view reason, const io::path& path)
@@ -173,6 +175,7 @@ private:
     bool confirm_all_ = false;
 
     std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
+    std::vector< io::path > rmdirs_;
 
     ////////////////////
     static std::string human(long bytes)
