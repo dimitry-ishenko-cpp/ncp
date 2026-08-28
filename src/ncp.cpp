@@ -70,7 +70,7 @@ auto get_attr(context& ctx, const io::file& source, attr_option option)
     return attr;
 }
 
-enum class status { failed, copied, unchanged, skipped };
+enum class status { failed, copied, moved, unchanged, skipped };
 
 inline auto fail(context& ctx, auto&&... args)
 {
@@ -124,8 +124,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
                 ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
                 ctx.print_verbose("Move", source.path(), target.path());
-
-                return status::copied;
+                return status::moved;
             }
         }
 
@@ -196,6 +195,17 @@ auto copy_directory(context& ctx, io::file source, io::file target)
         if (ec) return fail(ctx, ec, target.path());
     }
 
+    if (ctx.move)
+    {
+        io::rename(source.path(), target.path(), ec);
+        if (!ec)
+        {
+            ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+            ctx.print_verbose("Move", source.path(), target.path());
+            return status::moved;
+        }
+    }
+
     if (need_create)
     {
         io::create_directory(target.path(), ec);
@@ -245,7 +255,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
                 ctx.print_verbose("Move", source.path(), target.path());
-                return status::copied;
+                return status::moved;
             }
         }
         create(source, target, attr, ec);
