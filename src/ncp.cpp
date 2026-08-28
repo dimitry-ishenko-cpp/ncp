@@ -101,7 +101,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing file", target.path());
 
-        if (ctx.interactive && !ctx.confirm("Overwrite", target.path()))
+        if (ctx.interactive && !ctx.confirm("overwrite", target.path()))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -127,7 +127,11 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
                 });
 
             if (ec) fail(ctx, ec, source.path(), target.path());
-            else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+            else
+            {
+                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+                if (ctx.verbose) ctx.print_verbose(source.path(), target.path());
+            }
         });
     }
     else
@@ -138,6 +142,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
         ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
+        if (ctx.verbose) ctx.print_verbose(io::path{}, target.path());
     }
 
     return status::copied;
@@ -156,7 +161,7 @@ auto copy_directory(context& ctx, io::file source, io::file target)
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing non-directory", target.path());
 
-        if (ctx.interactive && !ctx.confirm("Replace", target.path()))
+        if (ctx.interactive && !ctx.confirm("replace", target.path()))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -173,6 +178,7 @@ auto copy_directory(context& ctx, io::file source, io::file target)
     ctx.add_dir_attr(target.path(), attr);
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+    if (ctx.verbose) ctx.print_verbose(need_create ? source.path() : io::path{}, target.path());
     return status::copied;
 }
 
@@ -191,7 +197,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing file", target.path());
 
-        if (ctx.interactive && !ctx.confirm("Replace", target.path()))
+        if (ctx.interactive && !ctx.confirm("replace", target.path()))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -205,6 +211,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
     if (ec) return fail(ctx, ec, target.path());
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+    if (ctx.verbose) ctx.print_verbose(need_create ? source.path() : io::path{}, target.path());
     return status::copied;
 }
 
@@ -445,6 +452,7 @@ try
                                     "which is equivalent to --update=all."              },
         { "-u", "--user",           "Preserve user ownership."                          },
         { "-V", "--version",        "Show program version and exit."                    },
+        { "-v", "--verbose",        "Explain what is being done."                       },
 
         { "SOURCE", pgm::mul,       "Files or directories to copy or move."             },
         { "DESTINATION", pgm::opt,  "Destination file or directory."                    },
@@ -529,6 +537,7 @@ try
         if (args["--special"]) ctx.keep_special = true;
         if (args["--time"]) ctx.keep_time = true;
         if (args["--user"]) ctx.keep_user = true;
+        if (args["--verbose"]) ctx.verbose = true;
 
         if (auto&& jobs = args["--jobs"])
         {
