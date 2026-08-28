@@ -17,6 +17,7 @@ Options:
 -i, --interactive          Prompt before overwriting files.
 -j, --jobs=<N>             Number of files to copy in parallel (max: 16).
 -L, --follow-links         Dereference source symlinks (default when non-recursive).
+-M, --move                 Remove source files after copying.
 -m, --mode                 Preserve file permissions (mode bits).
 -o, --ownership            Same as --user --group.
 -P, --keep-links           Preserve source symlinks (default when recursive).
