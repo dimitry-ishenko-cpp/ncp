@@ -58,8 +58,8 @@ struct context
     ////////////////////
     void add_error(std::string msg, const io::path& path1 = {}, const io::path& path2 = {})
     {
-        if (!path1.empty()) msg += std::format(": {}", path1.string());
-        if (!path2.empty()) msg += std::format(" => {}", path2.string());
+        if (!path1.empty()) msg += std::format(": '{}'", path1.string());
+        if (!path2.empty()) msg += std::format(" => '{}'", path2.string());
 
         error_free_.store(false, std::memory_order_relaxed);
 
@@ -94,7 +94,7 @@ struct context
         std::lock_guard lock{print_mutex_};
         for (;;)
         {
-            print_impl(retain, "{} {}? [Y/n/a/q] ", reason, path.string());
+            print_impl(retain, "{} '{}'? [Y/n/a/q] ", reason, path.string());
 
             auto c = std::getchar();
             auto reply = c;
@@ -148,8 +148,8 @@ struct context
     void print_action(const io::path& source, const io::path& target)
     {
         std::lock_guard lock{print_mutex_};
-        if (source.empty()) print_impl(retain, "update: {}\n", target.string());
-        else print_impl(retain, "{} => {}\n", source.string(), target.string());
+        if (source.empty()) print_impl(retain, "Update: '{}'\n", target.string());
+        else print_impl(retain, "'{}' => '{}'\n", source.string(), target.string());
     }
 
 private:

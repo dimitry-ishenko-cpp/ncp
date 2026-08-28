@@ -102,7 +102,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing file", target.path());
 
-        if (ctx.interactive && !ctx.confirm("overwrite", target.path()))
+        if (ctx.interactive && !ctx.confirm("Overwrite", target.path()))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -162,7 +162,7 @@ auto copy_directory(context& ctx, io::file source, io::file target)
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing non-directory", target.path());
 
-        if (ctx.interactive && !ctx.confirm("replace", target.path()))
+        if (ctx.interactive && !ctx.confirm("Replace", target.path()))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -198,7 +198,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing file", target.path());
 
-        if (ctx.interactive && !ctx.confirm("replace", target.path()))
+        if (ctx.interactive && !ctx.confirm("Replace", target.path()))
             return status::skipped;
 
         io::remove(target.path(), ec);

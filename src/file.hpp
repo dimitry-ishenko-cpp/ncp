@@ -168,8 +168,8 @@ struct formatter<io::exception> : formatter<string>
     auto format(const io::exception& e, format_context& ctx) const
     {
         string out = e.code().message();
-        if (!e.path1().empty()) out += std::format(": {}", e.path1().string());
-        if (!e.path2().empty()) out += std::format(" => {}", e.path2().string());
+        if (!e.path1().empty()) out += std::format(": '{}'", e.path1().string());
+        if (!e.path2().empty()) out += std::format(" => '{}'", e.path2().string());
 
         return formatter<string>::format(out, ctx);
     }
