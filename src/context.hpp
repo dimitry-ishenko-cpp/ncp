@@ -148,7 +148,8 @@ struct context
     void print_action(const io::path& source, const io::path& target)
     {
         std::lock_guard lock{print_mutex_};
-        print_impl(retain, "{} => {}\n", source.string(), target.string());
+        if (source.empty()) print_impl(retain, "update: {}\n", target.string());
+        else print_impl(retain, "{} => {}\n", source.string(), target.string());
     }
 
 private:
