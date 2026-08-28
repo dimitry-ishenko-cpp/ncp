@@ -51,32 +51,10 @@ struct context
 
     ////////////////////
     std::atomic<bool> quit{ false };
-    std::atomic<int> signal{0};
+    std::atomic<bool> error_free{ true };
 
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
-
-    ////////////////////
-    void add_error(std::string msg, const io::path& path1 = {}, const io::path& path2 = {})
-    {
-        if (!path1.empty()) msg += std::format(": '{}'", path1.string());
-        if (!path2.empty()) msg += std::format(" => '{}'", path2.string());
-
-        error_free_.store(false, std::memory_order_relaxed);
-
-        std::lock_guard guard{error_mutex_};
-        errors_.push_back(std::move(msg));
-    }
-    void add_error(std::error_code ec, const auto&... path) {
-        add_error(std::format("{}", io::exception{"", path..., ec}));
-    }
-    void add_error(std::errc cond, const auto&... path) {
-        add_error(std::make_error_code(cond), path...);
-    }
-
-    auto error_free() const noexcept {
-        return error_free_.load(std::memory_order_relaxed);
-    }
 
     ////////////////////
     void add_dir_attr(io::path path, io::attrib attr) {
@@ -92,7 +70,7 @@ struct context
     {
         if (confirm_all_) return true;
 
-        std::lock_guard lock{print_mutex_};
+        std::lock_guard lock{mutex_};
         for (;;)
         {
             print_impl(retain, "{} '{}'? [Y/n/a/q] ", reason, path.string());
@@ -112,13 +90,23 @@ struct context
         }
     }
 
-    void print_status()
+    void print(std::string_view msg, const io::path& path1 = {}, const io::path& path2 = {})
     {
-        decltype (errors_) errors;
-        {
-            std::lock_guard lock{error_mutex_};
-            std::swap(errors, errors_);
-        }
+        std::lock_guard guard{mutex_};
+        if (!path2.empty())
+            print_impl(retain, "{}: '{}' => '{}'\n", msg, path1.string(), path2.string());
+        else if (!path1.empty())
+            print_impl(retain, "{}: '{}'\n", msg, path1.string());
+        else print_impl(retain, "{}\n", msg);
+    }
+    void print(std::error_code ec, const auto&... paths) { print(ec.message(), paths...); }
+    void print(std::errc cond, const auto&... paths) { print(std::make_error_code(cond), paths...); }
+
+    void print_verbose(auto&&... args) { if (verbose) print(std::forward<decltype (args)>(args)...); }
+
+    void print_progress()
+    {
+        if (!progress) return;
 
         auto ft = files_total.load(std::memory_order_relaxed);
         auto fc = files_copied.load(std::memory_order_relaxed);
@@ -126,53 +114,38 @@ struct context
         auto bc = bytes_copied.load(std::memory_order_relaxed);
         auto pc = bt ? (100.0 * bc / bt) : 100.0;
 
-        if (quit.load(std::memory_order_relaxed)) smooth_done_ = pc;
-        else smooth_done_ += (pc - smooth_done_) * 0.3;
+        if (quit.load(std::memory_order_relaxed)) percent_ = pc;
+        else percent_ += (pc - percent_) * 0.3;
 
-        auto done = static_cast<long>(smooth_done_);
+        auto percent = static_cast<long>(percent_);
         constexpr auto bar_width = 40;
-        auto bar_fill = done * bar_width / 100;
+        auto bar_fill = percent * bar_width / 100;
 
         std::string bar;
         for (auto n = 0; n < bar_fill; ++n) bar += "█";
         for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
 
-        std::lock_guard lock{print_mutex_};
-        for (auto&& e : errors) print_impl(retain, "{}\n", e);
-
-        if (auto s = signal.exchange(0))
-            print_impl(retain, "Received signal {}, exiting...\n", s);
-
-        print_impl(replace, " {:>3}% {} {}/{} ● {}/{}\n", done, bar, fc, ft, human(bc), human(bt));
-    }
-
-    void print_action(const io::path& source, const io::path& target)
-    {
-        std::lock_guard lock{print_mutex_};
-        if (source.empty()) print_impl(retain, "Update: '{}'\n", target.string());
-        else print_impl(retain, "'{}' => '{}'\n", source.string(), target.string());
+        std::lock_guard lock{mutex_};
+        print_impl(replace, " {:>3}% {} {}/{} ● {}/{}\n", percent, bar, fc, ft, human(bc), human(bt));
     }
 
 private:
     ////////////////////
-    std::mutex error_mutex_;
-    std::vector<std::string> errors_;
-    std::atomic<bool> error_free_{ true };
+    std::mutex mutex_;
+    enum type { retain, replace } type_ = retain;
 
-    std::mutex print_mutex_;
-    enum print { retain, replace } print_ = retain;
     bool confirm_all_ = false;
-    double smooth_done_ = 0;
+    double percent_ = 0;
 
     std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
     std::vector< io::path > rmdirs_;
 
     ////////////////////
     template <typename... Args>
-    void print_impl(print print, std::format_string<Args...> fmt, Args&&... args)
+    void print_impl(type type, std::format_string<Args...> fmt, Args&&... args)
     {
-        if (print_ == replace) std::print("\033[{}F\033[K", 1);
-        print_ = print;
+        if (type_ == replace) std::print("\033[{}F\033[K", 1);
+        type_ = type;
 
         std::print(fmt, std::forward<Args>(args)...);
         std::fflush(stdout);

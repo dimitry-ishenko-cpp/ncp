@@ -13,6 +13,7 @@
 #include <charconv> // std::from_chars
 #include <csignal>
 #include <exception>
+#include <format>
 #include <future>
 #include <generator>
 #include <optional>
@@ -44,7 +45,7 @@ extern "C" void signal_handler(int signal)
 {
     if (pctx)
     {
-        pctx->signal = signal;
+        pctx->print(std::format("Received signal {}, exiting...\n", signal));
         pctx->quit = true;
     }
 }
@@ -73,7 +74,8 @@ enum class status { failed, copied, unchanged, skipped };
 
 inline auto fail(context& ctx, auto&&... args)
 {
-    ctx.add_error(std::forward<decltype (args)>(args)...);
+    ctx.print(std::forward<decltype (args)>(args)...);
+    ctx.error_free.store(false, std::memory_order_relaxed);
     return status::failed;
 }
 
@@ -121,7 +123,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
                 ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-                if (ctx.verbose) ctx.print_action(source.path(), target.path());
+                ctx.print_verbose("Move", source.path(), target.path());
 
                 return status::copied;
             }
@@ -143,7 +145,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             if (!ec)
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                if (ctx.verbose) ctx.print_action(source.path(), target.path());
+                ctx.print_verbose("Copy", source.path(), target.path());
 
                 if (ctx.move)
                 {
@@ -162,7 +164,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
         ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-        if (ctx.verbose) ctx.print_action(io::path{}, target.path());
+        ctx.print_verbose("Update", target.path());
 
         if (ctx.move)
         {
@@ -204,7 +206,7 @@ auto copy_directory(context& ctx, io::file source, io::file target)
     ctx.add_dir_attr(target.path(), attr);
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-    if (ctx.verbose) ctx.print_action(need_create ? source.path() : io::path{}, target.path());
+    ctx.print_verbose(need_create ? "Create" : "Update", target.path());
 
     if (ctx.move) ctx.add_rmdir(source.path());
 
@@ -242,7 +244,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
             if (!ec)
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                if (ctx.verbose) ctx.print_action(source.path(), target.path());
+                ctx.print_verbose("Move", source.path(), target.path());
                 return status::copied;
             }
         }
@@ -253,7 +255,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
     if (ec) return fail(ctx, ec, target.path());
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-    if (ctx.verbose) ctx.print_action(need_create ? source.path() : io::path{}, target.path());
+    ctx.print_verbose(need_create ? "Create" : "Update", target.path());
 
     if (ctx.move)
     {
@@ -433,7 +435,7 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
     }
     else if (sources.size() == 1)
         copy_source(ctx, pool, std::move(sources.front()), std::move(target));
-    else fail(ctx, std::make_error_code(std::errc::not_a_directory), target.path());
+    else fail(ctx, std::errc::not_a_directory, target.path());
 }
 
 void process_dirs(context& ctx)
@@ -454,17 +456,6 @@ void process_dirs(context& ctx)
         io::remove_directory(path, ec);
         if (ec) fail(ctx, ec, path);
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void report_status(context& ctx)
-{
-    do
-    {
-        std::this_thread::sleep_for(100ms);
-        ctx.print_status();
-    }
-    while (!ctx.quit.load(std::memory_order_relaxed));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -644,8 +635,15 @@ try
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
-        std::future<void> status_task;
-        if (ctx.progress) status_task = std::async(std::launch::async, [&]{ report_status(ctx); });
+        std::future<void> progress;
+        if (ctx.progress) progress = std::async(std::launch::async, [&ctx]
+        {
+            while (!ctx.quit.load(std::memory_order_relaxed))
+            {
+                std::this_thread::sleep_for(100ms);
+                ctx.print_progress();
+            }
+        });
 
         copy_sources(ctx, pool, std::move(sources), std::move(target));
         pool.join();
@@ -658,18 +656,18 @@ try
 
         if (ctx.progress)
         {
-            status_task.wait();
-            ctx.print_status(); // final status
+            progress.wait();
+            ctx.print_progress(); // final status
         }
 
-        exit_code = ctx.error_free() ? 0 : 2;
+        exit_code = ctx.error_free ? 0 : 2;
     }
 
     return exit_code;
 }
 catch (const io::exception& e)
 {
-    std::print("{}\n", e);
+    std::print("{}: '{}'\n", e.code().message(), e.path1().string());
     return 1;
 }
 catch (const std::exception& e)
