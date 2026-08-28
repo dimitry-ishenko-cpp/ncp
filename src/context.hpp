@@ -107,8 +107,6 @@ struct context
 
     void print_progress()
     {
-        if (!progress) return;
-
         auto ft = files_total.load(std::memory_order_relaxed);
         auto fc = files_copied.load(std::memory_order_relaxed);
         auto bt = bytes_total.load(std::memory_order_relaxed);
