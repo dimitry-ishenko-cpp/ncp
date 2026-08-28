@@ -152,6 +152,7 @@ std::generator<std::expected<path, std::error_code>> directory_iterator(const pa
 void modify(const path&, const attrib&, std::error_code&) noexcept;
 
 void remove(const path&, std::error_code&) noexcept;
+void remove_directory(const path&, std::error_code&) noexcept;
 
 void rename(const path&, const path&, std::error_code&) noexcept;
 

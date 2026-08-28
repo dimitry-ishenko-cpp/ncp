@@ -339,6 +339,12 @@ void remove(const path& path, std::error_code& ec) noexcept
     else ec = make_error_code(errno);
 }
 
+void remove_directory(const path& path, std::error_code& ec) noexcept
+{
+    if (0 == ::rmdir(path.c_str())) ec.clear();
+    else ec = make_error_code(errno);
+}
+
 void rename(const path& from, const path& to, std::error_code& ec) noexcept
 {
     if (0 == ::rename(from.c_str(), to.c_str())) ec.clear();
