@@ -648,11 +648,8 @@ try
         copy_sources(ctx, pool, std::move(sources), std::move(target));
         pool.join();
 
-        if (!ctx.quit) // don't process dirs on Ctrl+C
-        {
-            process_dirs(ctx);
-            ctx.quit = true;
-        }
+        if (!ctx.quit) process_dirs(ctx); // don't process dirs on Ctrl+C
+        ctx.quit = true;
 
         if (ctx.progress)
         {
