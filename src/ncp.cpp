@@ -9,12 +9,10 @@
 #include "context.hpp"
 #include "file.hpp"
 
-#include <array>
 #include <asio.hpp>
-#include <charconv>
+#include <charconv> // std::from_chars
 #include <csignal>
 #include <exception>
-#include <format>
 #include <generator>
 #include <optional>
 #include <print>
@@ -388,59 +386,12 @@ void update_dirs(context& ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-auto human(long bytes)
-{
-    constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
-
-    auto n = 0;
-    auto dbl_bytes = static_cast<double>(bytes);
-    for (; dbl_bytes >= 1024.0 && n < units.size() - 1; ++n) dbl_bytes /= 1024.0;
-
-    return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
-}
-
-void print_status(context& ctx)
-{
-    static bool overwrite = false;
-
-    if (overwrite) std::print("\033[{}F\033[K", 1);
-    else overwrite = true;
-
-    if (int signal = ctx.signal.exchange(0))
-        std::print("Received signal {}, exiting...\n", signal);
-
-    for (auto&& error : ctx.drain_errors()) std::print("{}\n", error);
-
-    auto files_total  = ctx.files_total.load(std::memory_order_relaxed);
-    auto files_copied = ctx.files_copied.load(std::memory_order_relaxed);
-    auto bytes_total  = ctx.bytes_total.load(std::memory_order_relaxed);
-    auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
-
-    static double smooth = 0;
-    auto current = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
-    if (ctx.quit.load(std::memory_order_relaxed)) smooth = current;
-    else smooth += (current - smooth) * 0.3;
-
-    auto percent_copied = static_cast<long>(smooth);
-
-    constexpr auto bar_width = 40;
-    auto bar_fill = percent_copied * bar_width / 100;
-    std::string bar;
-    for (auto n = 0; n < bar_fill; ++n) bar += "█";
-    for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
-
-    std::print(" {:>3}% {} {}/{} ● {}/{}\n",
-        percent_copied, bar, files_copied, files_total, human(bytes_copied), human(bytes_total)
-    );
-    std::fflush(stdout);
-}
-
 void report_status(context& ctx)
 {
     do
     {
         std::this_thread::sleep_for(100ms);
-        print_status(ctx);
+        ctx.print_status();
     }
     while (!ctx.quit.load(std::memory_order_relaxed));
 }
@@ -622,7 +573,7 @@ try
 
         ctx.quit = true;
         status_task.wait();
-        print_status(ctx); // final status
+        ctx.print_status(); // final status
 
         exit_code = ctx.error_free() ? 0 : 2;
     }
