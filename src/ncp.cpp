@@ -560,6 +560,18 @@ try
         if (args["--devices"]) ctx.keep_devices = true;
         if (args["--follow-dest-links"]) ctx.follow_dest_links = true;
         if (args["--group"]) ctx.keep_group = true;
+        if (args["--mode"]) ctx.keep_mode = true;
+        if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
+        if (args["--special"]) ctx.keep_special = true;
+        if (args["--time"]) ctx.keep_time = true;
+        if (args["--user"]) ctx.keep_user = true;
+
+        if (auto&& jobs = args["--jobs"])
+        {
+            auto n = parse(jobs.value()).value_or(-1);
+            if (n < 1 || n > 16) throw pgm::invalid_argument{ "bad --jobs value '" + jobs.value() + "'"};
+            ctx.jobs = n;
+        }
 
         if (args["--recursive"]) ctx.recursive = true;
         // keep symlinks in recursive mode by default
@@ -574,18 +586,6 @@ try
 
         if (follow_links) ctx.keep_links = false;
         else if (keep_links) ctx.keep_links = true;
-
-        if (auto&& jobs = args["--jobs"])
-        {
-            auto n = parse(jobs.value()).value_or(-1);
-            if (n < 1 || n > 16) throw pgm::invalid_argument{ "bad --jobs value '" + jobs.value() + "'"};
-            ctx.jobs = n;
-        }
-        if (args["--mode"]) ctx.keep_mode = true;
-        if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
-        if (args["--special"]) ctx.keep_special = true;
-        if (args["--time"]) ctx.keep_time = true;
-        if (args["--user"]) ctx.keep_user = true;
 
         if (auto&& unlink = args["--unlink"])
         {
