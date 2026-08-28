@@ -13,6 +13,7 @@
 #include <charconv> // std::from_chars
 #include <csignal>
 #include <exception>
+#include <future>
 #include <generator>
 #include <optional>
 #include <print>
