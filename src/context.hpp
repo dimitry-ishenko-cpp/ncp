@@ -17,6 +17,7 @@
 #include <mutex>
 #include <print>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <tuple>
 #include <utility> // std::exchange
@@ -79,6 +80,37 @@ struct context
 
     auto& dir_attrs() const { return dir_attrs_; }
 
+    bool confirm(std::string_view verb, const io::path& path)
+    {
+        if (confirm_all_) return true;
+
+        std::lock_guard lock{mutex_};
+        if (status_repl_)
+        {
+            std::print("\033[{}F\033[K", 1);
+            status_repl_ = false;
+        }
+
+        for (;;)
+        {
+            std::print("{} '{}'? [Y/n/a/q] ", verb, path.string());
+            std::fflush(stdout);
+
+            auto c = std::getchar();
+            auto reply = c;
+            while (c != '\n' && c != EOF) c = std::getchar();
+
+            switch (reply)
+            {
+                case 'y': case 'Y': case '\n': return true;
+                case 'n': case 'N': return false;
+                case 'a': case 'A': confirm_all_ = true; return true;
+                case EOF: std::print("q\n");
+                case 'q': case 'Q': quit = true; return false;
+            }
+        }
+    }
+
     void print_status()
     {
         std::lock_guard lock{mutex_};
@@ -118,6 +150,8 @@ private:
 
     bool status_repl_ = false;
     double smooth_done_ = 0;
+
+    bool confirm_all_ = false;
 
     static std::string human(long bytes)
     {
