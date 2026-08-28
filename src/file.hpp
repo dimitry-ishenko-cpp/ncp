@@ -10,11 +10,9 @@
 #include <cstdint>
 #include <expected>
 #include <filesystem>
-#include <format>
 #include <functional>
 #include <generator>
 #include <optional>
-#include <string>
 #include <system_error>
 
 #include <sys/types.h> // gid_t, uid_t
@@ -155,24 +153,5 @@ void remove(const path&, std::error_code&) noexcept;
 void remove_directory(const path&, std::error_code&) noexcept;
 
 void rename(const path&, const path&, std::error_code&) noexcept;
-
-}
-
-////////////////////////////////////////////////////////////////////////////////
-namespace std
-{
-
-template <>
-struct formatter<io::exception> : formatter<string>
-{
-    auto format(const io::exception& e, format_context& ctx) const
-    {
-        string out = e.code().message();
-        if (!e.path1().empty()) out += std::format(": '{}'", e.path1().string());
-        if (!e.path2().empty()) out += std::format(" => '{}'", e.path2().string());
-
-        return formatter<string>::format(out, ctx);
-    }
-};
 
 }
