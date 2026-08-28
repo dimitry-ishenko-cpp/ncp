@@ -145,6 +145,19 @@ struct context
         std::fflush(stdout);
     }
 
+    void print_verbose(const io::path& source, const io::path& target)
+    {
+        std::lock_guard lock{mutex_};
+        if (status_repl_)
+        {
+            std::print("\033[{}F\033[K", 1);
+            status_repl_ = false;
+        }
+
+        if (source.empty()) std::print("metadata: '{}'\n", target.string());
+        else std::print("'{}' => '{}'\n", source.string(), target.string());
+    }
+
 private:
     std::mutex mutex_;
     std::vector<std::string> errors_;
