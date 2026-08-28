@@ -1,5 +1,223 @@
-ncp (0.2) UNRELEASED; urgency=medium
+ncp (0.3) unstable; urgency=medium
 
-  * Initial release.
+  * Prepare for 0.3
+  * Add Debian release workflow
+  * Add Debian packaging
+  * CMakeLists: add nmv symlink
+  * ncp: fix signal handling UB
+  * ncp: tweak
+  * file: not used
+  * Refactor printing
+  * ncp: implement --move
+  * Improved printing
+  * file: add remove_directory() function
+  * ncp: tweak
+  * context: tweak printing
+  * context: fix
+  * context: refactor printing
+  * context: add add_rmdir() and rmdirs() functions
+  * context: lock-free error_free()
+  * file: add rename() function
+  * README: show help screen
+  * v0.2
+  * file: add missing noexcept
+  * context: tweak
+  * ncp: implement --verbose
+  * context: add print_verbose() function
+  * ncp: implement --progress
+  * ncp: implement --interactive
+  * context: add confirm() function
+  * Move print_status into context
+  * ncp: organize args
+  * context: remove add_error hack
+  * ncp: introduce status enum
+  * ncp: add control channel for the walk_tree generator
+  * v0.1
+  * ncp: tweak
+  * ncp: fix
+  * ncp: "speed up" progress bar
+  * ncp: fix deadlock
+  * ncp: smooth progress bar
+  * ncp: don't count failed dirs
+  * ncp: count other file types
+  * file: chown is most likely to fail, so it last
+  * ncp: add missing attr
+  * file: remove for now
+  * ncp: default to --unlink=auto
+  * context: lock down dir_attrs
+  * context: not using error count
+  * ncp: update dirs in reverse (children first)
+  * ncp: follow dest links
+  * ncp: tweak
+  * ncp: refactor directories
+  * ncp: refactor regular files
+  * ncp: refactor symlinks
+  * ncp: refactor devices and special files
+  * Use bool return status instead of ec
+  * ncp: can't copy from sockets
+  * file: report error when cancelled
+  * ncp: report in-file copy progress
+  * file: add progress callback to copy_file()
+  * ncp: copy from block and special devices
+  * file: compute size of block devices
+  * file: don't rely on size
+  * ncp: refactor get_attr()
+  * ncp: refactor and strip down
+  * context: refactor add_error()
+  * file: add equality operator
+  * ncp: tweak
+  * ncp: respect --follow-dest-links
+  * ncp: use --unlink=auto in archive mode
+  * file: add can_read()
+  * Add --follow-dest-links option
+  * ncp: fix names
+  * ncp: check garbage at end
+  * ncp: implement --unlink option
+  * Follow boolean convention
+  * file: add remove()
+  * ncp: implement --archive option
+  * ncp: implement --jobs option
+  * ncp: implement --special and --devices options
+  * file: fix symlink processing
+  * file: add functions to create special devices
+  * file: tweak
+  * ncp: tweak
+  * ncp: implement --time option
+  * file: add modify() and refactor
+  * file: refactor
+  * file: fix
+  * file: add noexcept
+  * file: fix time conversion
+  * file: add time attrib
+  * ncp: tweak short options
+  * ncp: simplify status reporting
+  * Implement --update
+  * ncp: stub for jobs
+  * ncp: better names
+  * ncp: refactor
+  * file: clear ec on success
+  * file: split devices from special
+  * file: universal refs
+  * file: tweak
+  * ncp: potential overflow
+  * ncp: eliminate double stat for symlinks
+  * ncp: stay under 80 chars
+  * file: fix create_directory
+  * ncp: fix possible race in signal handler
+  * ncp: fix walk_all
+  * Merge options and state into context
+  * Merge walk.cpp into ncp.cpp
+  * Marge report.cpp into ncp.cpp
+  * ncp: tweak
+  * walk: copy file attributes
+  * walk: copy symlink attributes
+  * walk: copy directory attributes
+  * Refactor for future options
+  * file: add formatter for exception
+  * file: add not_found()
+  * file: fix operator bool()
+  * file: POSIX uses -1 for unspecified uid/gid
+  * file: detect/make default-contructed instance
+  * ncp: use io
+  * file: add exception alias
+  * Add --group, --user and --ownership options
+  * options: use io
+  * options: don't rely on external init
+  * pgm_args.hpp => args.hpp
+  * io_file.cpp => file.cpp
+  * file: add support for attributes
+  * file: use uid_t and gid_t
+  * file: time_type => time, mtime => time
+  * file: perms => mode
+  * file: implement copy_file
+  * file: tweak
+  * file: fix create_directory
+  * file: fix potential leak
+  * file: add stub for copy_file()
+  * Switch back to using std::error_code
+  * pgm/args.hpp => pgm_args.hpp
+  * Remove old file implementation
+  * walk: switch back to fs::file_copy for now
+  * walk switch to io:: functions (except copy_file)
+  * state: refactor
+  * file: switch to error_info & expected/unexpected
+  * Add error_info
+  * file: add create_directory()
+  * walk: better names
+  * file: add directory_iterator() generator
+  * walk: use io::create_symlink
+  * walk: tweak
+  * file: add create_symlink()
+  * file_info: read mtime
+  * Move file type definitions into file.hpp
+  * file_info: save syscall
+  * file_info: add target_path()
+  * file_info: target() => follow_symlinks()
+  * file_info: initialize all members
+  * walk: start switching to file_info
+  * Add file_info bits
+  * file: tweak
+  * walk: use iterator wrappers
+  * file: wrap iterator functions
+  * report: tweak
+  * walk: use wrapped functions
+  * file: wrap more functions
+  * Wrap common file functions
+  * state: add overload for error
+  * Add file.hpp
+  * copy.cpp => file.cpp
+  * report: render progress bar
+  * ncp: report progress
+  * Add report() and report_one()
+  * walk: fix spurious errors
+  * copy_file: fix reporting
+  * .gitignore: gdb
+  * ncp: throw filesystem error
+  * ncp: return 2 on errors
+  * state: count errors
+  * ncp: tweak
+  * ncp: use std::string
+  * copy: implement stock copy and update totals
+  * walk: update totals
+  * state: update add_error() overloads
+  * Correct link options
+  * walk: refactor
+  * ncp: tweak
+  * walk: handle dangling symlinks
+  * Remove signal.hpp
+  * Change order
+  * Remove error.hpp
+  * walk: implement link handling, recursion and error resilience
+  * state: add add_error() overloads
+  * copy: copy_task => copy_file
+  * options: symlink_dirs => symlink_other
+  * walk: propagate state and options to walk()
+  * walk: implement recursive option
+  * copy: add options
+  * Add recursive and link options
+  * state: add files and bytes stats
+  * ncp: use std::print
+  * copy: copy => copy_task
+  * Refactor error printing
+  * walk: walk_all => walk_task
+  * ncp: walk on the main thread
+  * Add signal_set class
+  * walk: tweak names
+  * walk: better trailing slash detection
+  * walk: check quit flag
+  * walk_task => walk, copy_task => copy
+  * ncp: fix signal handling
+  * walk_task: implement basic walk
+  * ncp: handle filesystem_error exceptions
+  * Add bits for copy_task
+  * walk_task: tweak
+  * params => options
+  * ncp: process source and destination options
+  * ncp: add plumbing to launch stuff
+  * ncp: add signal handler
+  * Add walk_task bits
+  * Add bits for params and state
+  * Import existing project
+  * Initial commit
 
- -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Fri, 28 Aug 2026 15:34:42 -0400
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Fri, 28 Aug 2026 16:10:11 -0400
