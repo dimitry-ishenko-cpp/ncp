@@ -130,7 +130,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             else
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                if (ctx.verbose) ctx.print_verbose(source.path(), target.path());
+                if (ctx.verbose) ctx.print_action(source.path(), target.path());
             }
         });
     }
@@ -142,7 +142,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
         ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-        if (ctx.verbose) ctx.print_verbose(io::path{}, target.path());
+        if (ctx.verbose) ctx.print_action("[attrs]", target.path());
     }
 
     return status::copied;
@@ -178,7 +178,7 @@ auto copy_directory(context& ctx, io::file source, io::file target)
     ctx.add_dir_attr(target.path(), attr);
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-    if (ctx.verbose) ctx.print_verbose(need_create ? source.path() : io::path{}, target.path());
+    if (ctx.verbose) ctx.print_action(need_create ? source.path() : "[attrs]", target.path());
     return status::copied;
 }
 
@@ -211,7 +211,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
     if (ec) return fail(ctx, ec, target.path());
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-    if (ctx.verbose) ctx.print_verbose(need_create ? source.path() : io::path{}, target.path());
+    if (ctx.verbose) ctx.print_action(need_create ? source.path() : "[attrs]", target.path());
     return status::copied;
 }
 
