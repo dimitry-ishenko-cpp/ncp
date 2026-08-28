@@ -277,13 +277,14 @@ bool copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
         case io::file_type::not_found:
             return ctx.add_error("Source does not exist", source.path());
 
-        default:
-            return ctx.add_error("Skipping unknown file", source.path());
+        default: return ctx.add_error("Skipping unknown file", source.path());
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::generator<io::file> walk_tree(context& ctx, const io::file& dir)
+struct entry { io::file file; bool descend; };
+
+std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
 {
     for (auto&& expected_path : io::directory_iterator(dir.path()))
         if (expected_path)
@@ -298,9 +299,10 @@ std::generator<io::file> walk_tree(context& ctx, const io::file& dir)
                 if (ec) { ctx.add_error(ec, child.path()); continue; }
             }
 
-            co_yield child;
+            entry entry{ child, true };
+            co_yield entry;
 
-            if (child.is_directory())
+            if (child.is_directory() && entry.descend)
                 co_yield std::ranges::elements_of( walk_tree(ctx, child) );
         }
         else ctx.add_error(expected_path.error());
@@ -322,7 +324,7 @@ void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::fil
 
     auto success = copy_entry(ctx, pool, std::as_const(source), std::as_const(target), false);
     if (success && source.is_directory())
-        for (auto&& source_child : walk_tree(ctx, source))
+        for (auto&& [ source_child, descend ] : walk_tree(ctx, source))
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
