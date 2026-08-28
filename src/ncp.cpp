@@ -45,7 +45,7 @@ extern "C" void signal_handler(int signal)
 {
     if (pctx)
     {
-        pctx->print(std::format("Received signal {}, exiting...\n", signal));
+        pctx->exit_signal = signal;
         pctx->quit = true;
     }
 }
@@ -657,7 +657,12 @@ try
             ctx.print_progress(); // final status
         }
 
-        exit_code = ctx.error_free ? 0 : 2;
+        if (auto signal = ctx.exit_signal.exchange(0))
+        {
+            ctx.print(std::format("Received signal {}, exiting...\n", signal));
+            exit_code = 3;
+        }
+        else if (!ctx.error_free) exit_code = 2;
     }
 
     return exit_code;

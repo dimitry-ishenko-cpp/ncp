@@ -50,8 +50,9 @@ struct context
     bool verbose = false;
 
     ////////////////////
-    std::atomic<bool> quit{ false };
     std::atomic<bool> error_free{ true };
+    std::atomic<int> exit_signal{0};
+    std::atomic<bool> quit{ false };
 
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
