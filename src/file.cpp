@@ -36,11 +36,11 @@ struct auto_close
     ~auto_close() { if (fd != -1) ::close(fd); }
 };
 
-inline bool chmod(const path& path, const attrib& attr) {
+inline bool chmod(const path& path, const attrib& attr) noexcept {
     return !attr.mode || 0 == ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode));
 }
 
-inline bool chown(const path& path, const attrib& attr) {
+inline bool chown(const path& path, const attrib& attr) noexcept {
     return !(attr.uid || attr.gid) || 0 == ::lchown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1));
 }
 
@@ -56,7 +56,7 @@ inline auto mtime(time time) noexcept
     return std::array{ timespec{0, UTIME_OMIT}, timespec{sec.count(), nsec.count()} };
 }
 
-inline bool utime(const path& path, const attrib& attr) {
+inline bool utime(const path& path, const attrib& attr) noexcept {
     return !attr.time || 0 == ::utimensat(AT_FDCWD, path.c_str(), mtime(*attr.time).data(), AT_SYMLINK_NOFOLLOW);
 }
 
@@ -327,13 +327,13 @@ std::generator<std::expected<path, std::error_code>> directory_iterator(const pa
     else co_yield std::unexpected(make_error_code(errno));
 }
 
-void modify(const path& path, const attrib& attr, std::error_code& ec)
+void modify(const path& path, const attrib& attr, std::error_code& ec) noexcept
 {
     if (chmod(path, attr) && utime(path, attr) && chown(path, attr)) ec.clear();
     else ec = make_error_code(errno);
 }
 
-void remove(const path& path, std::error_code& ec)
+void remove(const path& path, std::error_code& ec) noexcept
 {
     if (0 == ::unlink(path.c_str())) ec.clear();
     else ec = make_error_code(errno);

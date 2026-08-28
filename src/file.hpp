@@ -149,9 +149,9 @@ inline void create_symlink(const path& to, const path& new_link, std::error_code
 
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
 
-void modify(const path&, const attrib&, std::error_code&);
+void modify(const path&, const attrib&, std::error_code&) noexcept;
 
-void remove(const path&, std::error_code&);
+void remove(const path&, std::error_code&) noexcept;
 
 }
 
