@@ -61,9 +61,10 @@ struct context
         if (!path1.empty()) msg += std::format(": {}", path1.string());
         if (!path2.empty()) msg += std::format(" => {}", path2.string());
 
+        error_free_.store(false, std::memory_order_relaxed);
+
         std::lock_guard guard{mutex_};
         errors_.push_back(std::move(msg));
-        error_free_ = false;
     }
     void add_error(std::error_code ec, const auto&... path) {
         add_error(std::format("{}", io::exception{"", path..., ec}));
@@ -72,10 +73,8 @@ struct context
         add_error(std::make_error_code(cond), path...);
     }
 
-    auto error_free()
-    {
-        std::lock_guard guard{mutex_};
-        return error_free_;
+    auto error_free() const noexcept {
+        return error_free_.load(std::memory_order_relaxed);
     }
 
     ////////////////////
@@ -166,7 +165,7 @@ private:
     ////////////////////
     std::mutex mutex_;
     std::vector<std::string> errors_;
-    bool error_free_ = true;
+    std::atomic<bool> error_free_{ true };
 
     bool status_repl_ = false;
     double smooth_done_ = 0;
