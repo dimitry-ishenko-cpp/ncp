@@ -101,6 +101,9 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing file", target.path());
 
+        if (ctx.interactive && !ctx.confirm("Overwrite", target.path()))
+            return status::skipped;
+
         io::remove(target.path(), ec);
         if (ec) return fail(ctx, ec, target.path());
     }
@@ -153,6 +156,9 @@ auto copy_directory(context& ctx, io::file source, io::file target)
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing non-directory", target.path());
 
+        if (ctx.interactive && !ctx.confirm("Replace", target.path()))
+            return status::skipped;
+
         io::remove(target.path(), ec);
         if (ec) return fail(ctx, ec, target.path());
     }
@@ -184,6 +190,9 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
     {
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "Not replacing existing file", target.path());
+
+        if (ctx.interactive && !ctx.confirm("Replace", target.path()))
+            return status::skipped;
 
         io::remove(target.path(), ec);
         if (ec) return fail(ctx, ec, target.path());
@@ -417,6 +426,7 @@ try
                                     "If the option is omitted entirely, 'auto' is used."},
         { "-g", "--group",          "Preserve group ownership."                         },
         { "-h", "--help",           "Show this help message and exit."                  },
+        { "-i", "--interactive",    "Prompt before overwriting files."                  },
         { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
         { "-L", "--follow-links",   "Dereference source symlinks (default when non-recursive)." },
         { "-m", "--mode",           "Preserve file permissions (mode bits)."            },
@@ -511,6 +521,7 @@ try
         if (args["--devices"]) ctx.keep_devices = true;
         if (args["--follow-dest-links"]) ctx.follow_dest_links = true;
         if (args["--group"]) ctx.keep_group = true;
+        if (args["--interactive"]) ctx.interactive = true;
         if (args["--mode"]) ctx.keep_mode = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
         if (args["--special"]) ctx.keep_special = true;
