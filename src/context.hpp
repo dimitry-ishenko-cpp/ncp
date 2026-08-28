@@ -55,6 +55,7 @@ struct context
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
 
+    ////////////////////
     void add_error(std::string msg, const io::path& path1 = {}, const io::path& path2 = {})
     {
         if (!path1.empty()) msg += std::format(": {}", path1.string());
@@ -77,13 +78,15 @@ struct context
         return error_free_;
     }
 
+    ////////////////////
     void add_dir_attr(io::path path, io::attrib attr) {
         dir_attrs_.emplace_back(std::move(path), std::move(attr));
     }
 
     auto& dir_attrs() const { return dir_attrs_; }
 
-    bool confirm(std::string_view verb, const io::path& path)
+    ////////////////////
+    bool confirm(std::string_view reason, const io::path& path)
     {
         if (confirm_all_) return true;
 
@@ -96,7 +99,7 @@ struct context
 
         for (;;)
         {
-            std::print("{} '{}'? [Y/n/a/q] ", verb, path.string());
+            std::print("{} {}? [Y/n/a/q] ", reason, path.string());
             std::fflush(stdout);
 
             auto c = std::getchar();
@@ -155,11 +158,12 @@ struct context
             status_repl_ = false;
         }
 
-        if (source.empty()) std::print("metadata: '{}'\n", target.string());
-        else std::print("'{}' => '{}'\n", source.string(), target.string());
+        if (source.empty()) std::print("metadata: {}\n", target.string());
+        else std::print("{} => {}\n", source.string(), target.string());
     }
 
 private:
+    ////////////////////
     std::mutex mutex_;
     std::vector<std::string> errors_;
     bool error_free_ = true;
@@ -169,6 +173,9 @@ private:
 
     bool confirm_all_ = false;
 
+    std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
+
+    ////////////////////
     static std::string human(long bytes)
     {
         constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
@@ -179,6 +186,4 @@ private:
 
         return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
     }
-
-    std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
 };
