@@ -14,4 +14,8 @@ add_executable(ncp
 )
 target_link_libraries(ncp PRIVATE PkgConfig::asio)
 
+set(nmv ${CMAKE_CURRENT_BINARY_DIR}/nmv)
+file(CREATE_LINK ncp ${nmv} SYMBOLIC)
+
 install(TARGETS ncp DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS ${nmv} DESTINATION ${CMAKE_INSTALL_BINDIR})
