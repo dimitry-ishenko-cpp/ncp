@@ -1,0 +1,16 @@
+Source: ncp
+Section: utils
+Maintainer: Dimitry Ishenko <dimitry.ishenko@gmail.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake,
+Standards-Version: 4.7.4
+Vcs-Browser: https://github.com/dimitry-ishenko-cpp/ncp
+Vcs-Git: https://github.com/dimitry-ishenko-cpp/ncp.git
+
+Package: ncp
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Description: New and improved, now asbestos-free copy utility
