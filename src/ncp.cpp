@@ -432,6 +432,7 @@ try
         { "-m", "--mode",           "Preserve file permissions (mode bits)."            },
         { "-o", "--ownership",      "Same as --user --group."                           },
         { "-P", "--keep-links",     "Preserve source symlinks (default when recursive)."},
+        { "-p", "--progress",       "Show progress bar."                                },
         { "-r", "--recursive",      "Copy directories recursively."                     },
         {       "--special",        "Preserve named pipes and sockets."                 },
         { "-T", "--target", "dir",  "Target directory to copy into."                    },
@@ -524,6 +525,7 @@ try
         if (args["--interactive"]) ctx.interactive = true;
         if (args["--mode"]) ctx.keep_mode = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
+        if (args["--progress"]) ctx.progress = true;
         if (args["--special"]) ctx.keep_special = true;
         if (args["--time"]) ctx.keep_time = true;
         if (args["--user"]) ctx.keep_user = true;
@@ -576,15 +578,19 @@ try
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
-        auto status_task = std::async(std::launch::async, [&]{ report_status(ctx); });
+        std::future<void> status_task;
+        if (ctx.progress) status_task = std::async(std::launch::async, [&]{ report_status(ctx); });
 
         copy_sources(ctx, pool, std::move(sources), std::move(target));
         pool.join();
         update_dirs(ctx);
 
         ctx.quit = true;
-        status_task.wait();
-        ctx.print_status(); // final status
+        if (ctx.progress)
+        {
+            status_task.wait();
+            ctx.print_status(); // final status
+        }
 
         exit_code = ctx.error_free() ? 0 : 2;
     }
