@@ -1,3 +1,21 @@
+ncp (0.4) unstable; urgency=medium
+
+  * Prepare for 0.4
+  * ncp: make status bar dynamic
+  * ncp: show speed and time
+  * context: remove unnecessary atomics
+  * Move show_progress() out of context
+  * ncp: fix name
+  * args: refactor
+  * args: use lower case
+  * Move confirm() out of context
+  * Refactor printing... again
+  * context: fix
+  * ncp: move top level directories
+  * README: add missing option
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Sat, 29 Aug 2026 15:16:05 -0400
+
 ncp (0.3) unstable; urgency=medium
 
   * Prepare for 0.3
