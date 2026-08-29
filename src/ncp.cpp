@@ -541,6 +541,12 @@ auto format_time(std::chrono::seconds dur)
     else return std::format("{:%M:%S}", dur);
 }
 
+int get_term_width()
+{
+    struct winsize w;
+    return (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1) ? 80 : w.ws_col;
+}
+
 void show_progress(context& ctx)
 {
     auto files_total = ctx.files_total.load(std::memory_order_relaxed);
@@ -551,13 +557,6 @@ void show_progress(context& ctx)
     auto percent = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
     if (ctx.quit.load(std::memory_order_relaxed)) ctx.percent_copied = percent;
     else ctx.percent_copied += (percent - ctx.percent_copied) * 0.33;
-
-    int width = 40;
-    int done = ctx.percent_copied * width / 100;
-    
-    std::string bar;
-    for (auto n = 0; n < done; ++n) bar += "█";
-    for (auto n = done; n < width; ++n) bar += "░";
 
     using std::chrono::seconds;
     auto now = steady_clock::now();
@@ -574,11 +573,54 @@ void show_progress(context& ctx)
 
     seconds eta{ ctx.speed ? static_cast<long>((bytes_total - bytes_copied) / ctx.speed) : 0 };
 
-    ctx.print(replace, " {:>3.0f}% {} {}/{} ● {}/{} ● {}/s ● {} ETA {}\n",
-        ctx.percent_copied, bar, files_copied, files_total,
-        format_bytes(bytes_copied), format_bytes(bytes_total), format_bytes(ctx.speed),
-        format_time(elapsed), format_time(eta)
+    ////////////////////
+    constexpr auto min_bar_width = 15, max_bar_width = 41;
+    constexpr auto b_x = 2; // ● takes up 3 chars
+
+    auto width = get_term_width() - 1;
+
+    auto metric = std::format(" {}/{} ● {}/{}", files_copied, files_total,
+        format_bytes(bytes_copied), format_bytes(bytes_total)
     );
+    if (width >= metric.size() - b_x)
+    {
+        width -= metric.size() - b_x;
+
+        auto time = std::format(" ● {} ETA {}", format_time(elapsed), format_time(eta));
+        if (width >= time.size() - b_x)
+        {
+            width -= time.size() - b_x;
+
+            auto speed = std::format(" ● {}/s", format_bytes(ctx.speed));
+            if (width >= speed.size() - b_x) { width -= speed.size() - b_x; metric += speed; }
+
+            metric += time;
+        }
+    }
+    else
+    {
+        metric = std::format(" {} ETA {}", format_time(elapsed), format_time(eta));
+        if (width >= metric.size()) width -= metric.size(); else metric.clear();
+    }
+
+    auto bar = std::format(" {:>3.0f}%", ctx.percent_copied);
+    if (width >= bar.size())
+    {
+        width -= bar.size();
+
+        if (width >= min_bar_width)
+        {
+            if (width > max_bar_width) width = max_bar_width;
+            bar += " "; --width;
+
+            int done = ctx.percent_copied * width / 100;
+            for (auto n = 0; n < done; ++n) bar += "█";
+            for (auto n = done; n < width; ++n) bar += "░";
+        }
+    }
+    else bar.clear();
+
+    ctx.print(replace, "{}{}\n", bar, metric);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
