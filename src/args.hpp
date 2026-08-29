@@ -155,28 +155,28 @@ private:
 struct argument_exception : std::invalid_argument
 {
     argument_exception(std::string_view what, std::string_view why) :
-        std::invalid_argument{std::string{what} + ": " + std::string{why} + "."}
+        std::invalid_argument{std::string{what} + ": " + std::string{why}}
     { }
 };
 
 struct invalid_definition : argument_exception
 {
     invalid_definition(std::string_view why) :
-        argument_exception{"Invalid definition", why}
+        argument_exception{"invalid definition", why}
     { }
 };
 
 struct invalid_argument : argument_exception
 {
     invalid_argument(std::string_view why) :
-        argument_exception{"Invalid argument", why}
+        argument_exception{"invalid argument", why}
     { }
 };
 
 struct missing_argument : argument_exception
 {
     missing_argument(std::string_view why) :
-        argument_exception{"Missing argument", why}
+        argument_exception{"missing argument", why}
     { }
 };
 
