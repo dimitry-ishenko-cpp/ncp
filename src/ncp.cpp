@@ -561,11 +561,11 @@ void show_progress(context& ctx)
     if (ctx.quit.load(std::memory_order_relaxed)) ctx.percent_copied = percent;
     else ctx.percent_copied += (percent - ctx.percent_copied) * 0.33;
 
-    using std::chrono::seconds;
+    using namespace std::chrono;
     auto now = steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<seconds>(now - ctx.start_time);
+    auto elapsed = duration_cast<seconds>(now - ctx.start_time);
 
-    if (auto delta = std::chrono::duration<double>{now - ctx.last_time}.count())
+    if (auto delta = duration<double>{now - ctx.last_time}.count())
     {
         auto speed = (bytes_copied - ctx.last_bytes) / delta;
         ctx.speed = ctx.speed ? (ctx.speed + (speed - ctx.speed) * 0.1) : speed;

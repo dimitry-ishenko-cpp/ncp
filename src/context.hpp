@@ -19,8 +19,6 @@
 #include <tuple>
 #include <vector>
 
-using std::chrono::steady_clock;
-
 ////////////////////////////////////////////////////////////////////////////////
 enum class unlink { never, always, auto_ };
 enum class update { none, all, older, changed, size, };
@@ -60,8 +58,8 @@ struct context
     std::atomic<long> bytes_total{0}, bytes_copied{0};
     double percent_copied = 0;
 
-    steady_clock::time_point start_time = steady_clock::now();
-    steady_clock::time_point last_time = start_time;
+    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point last_time = start_time;
     long last_bytes = 0;
     double speed = 0;
 
