@@ -30,8 +30,9 @@ using namespace std::chrono_literals;
 ////////////////////////////////////////////////////////////////////////////////
 void show_usage(const pgm::args& args, const std::string& name)
 {
-    auto preamble = R"(
-ncp – new and improved, now asbestos-free copy utility.)";
+    auto preamble = std::format(R"(
+{} – new and improved, now asbestos-free copy utility.)",
+    name);
 
     std::print("{}\n", args.usage(name, preamble));
 }
