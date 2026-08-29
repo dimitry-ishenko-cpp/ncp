@@ -1,3 +1,13 @@
+ncp (0.4.1) unstable; urgency=medium
+
+  * Prepare for 0.4.1
+  * d/control: add missing build-deps
+  * ncp: potential overflow
+  * context: reduce namespace pollution
+  * ncp: add missing includes
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Sat, 29 Aug 2026 16:19:40 -0400
+
 ncp (0.4) unstable; urgency=medium
 
   * Prepare for 0.4
