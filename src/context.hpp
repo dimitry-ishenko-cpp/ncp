@@ -18,9 +18,7 @@
 #include <print>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <tuple>
-#include <utility> // std::exchange
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,14 +65,14 @@ struct context
     auto& rmdirs() const noexcept { return rmdirs_; }
 
     ////////////////////
-    bool confirm(std::string_view reason, const io::path& path)
+    bool confirm(std::string_view action, const io::file& file)
     {
         if (confirm_all_) return true;
 
         std::lock_guard lock{mutex_};
         for (;;)
         {
-            print_impl(retain, "{} '{}'? [Y/n/a/q] ", reason, path.string());
+            print_impl(retain, "{} '{}'? [Y/n/a/q] ", action, file.path().string());
 
             auto c = std::getchar();
             auto reply = c;
@@ -91,21 +89,14 @@ struct context
         }
     }
 
-    void print(std::string_view msg, const io::path& path1 = {}, const io::path& path2 = {})
+    template <typename... Args>
+    void print(std::format_string<Args...> fmt, Args&&... args)
     {
         std::lock_guard guard{mutex_};
-        if (!path2.empty())
-            print_impl(retain, "{}: '{}' => '{}'\n", msg, path1.string(), path2.string());
-        else if (!path1.empty())
-            print_impl(retain, "{}: '{}'\n", msg, path1.string());
-        else print_impl(retain, "{}\n", msg);
+        print_impl(retain, fmt, std::forward<Args>(args)...);
     }
-    void print(std::error_code ec, const auto&... paths) { print(ec.message(), paths...); }
-    void print(std::errc cond, const auto&... paths) { print(std::make_error_code(cond), paths...); }
 
-    void print_verbose(auto&&... args) { if (verbose) print(std::forward<decltype (args)>(args)...); }
-
-    void print_progress()
+    void show_progress()
     {
         auto ft = files_total.load(std::memory_order_relaxed);
         auto fc = files_copied.load(std::memory_order_relaxed);
