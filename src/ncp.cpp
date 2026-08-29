@@ -524,7 +524,7 @@ void process_dirs(context& ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-auto human(long bytes)
+auto format_bytes(long bytes)
 {
     constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
 
@@ -535,6 +535,12 @@ auto human(long bytes)
     return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
 }
 
+auto format_time(std::chrono::seconds dur)
+{
+    if (dur >= 1h) return std::format("{:%H:%M:%S}", dur);
+    else return std::format("{:%M:%S}", dur);
+}
+
 void show_progress(context& ctx)
 {
     auto files_total = ctx.files_total.load(std::memory_order_relaxed);
@@ -542,20 +548,36 @@ void show_progress(context& ctx)
     auto bytes_total = ctx.bytes_total.load(std::memory_order_relaxed);
     auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
 
-    auto percent_new = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
-    if (ctx.quit.load(std::memory_order_relaxed)) ctx.percent_copied = percent_new;
-    else ctx.percent_copied += (percent_new - ctx.percent_copied) * 0.33;
+    auto percent = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
+    if (ctx.quit.load(std::memory_order_relaxed)) ctx.percent_copied = percent;
+    else ctx.percent_copied += (percent - ctx.percent_copied) * 0.33;
 
-    auto percent = static_cast<long>(ctx.percent_copied);
-    constexpr auto bar_width = 40;
-    auto bar_fill = percent * bar_width / 100;
-
+    int width = 40;
+    int done = ctx.percent_copied * width / 100;
+    
     std::string bar;
-    for (auto n = 0; n < bar_fill; ++n) bar += "█";
-    for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
+    for (auto n = 0; n < done; ++n) bar += "█";
+    for (auto n = done; n < width; ++n) bar += "░";
 
-    ctx.print(replace, " {:>3}% {} {}/{} ● {}/{}\n",
-        percent, bar, files_copied, files_total, human(bytes_copied), human(bytes_total)
+    using std::chrono::seconds;
+    auto now = steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<seconds>(now - ctx.start_time);
+
+    if (auto delta = std::chrono::duration<double>{now - ctx.last_time}.count())
+    {
+        auto speed = (bytes_copied - ctx.last_bytes) / delta;
+        ctx.speed = ctx.speed ? (ctx.speed + (speed - ctx.speed) * 0.1) : speed;
+
+        ctx.last_time = now;
+        ctx.last_bytes = bytes_copied;
+    }
+
+    seconds eta{ ctx.speed ? static_cast<long>((bytes_total - bytes_copied) / ctx.speed) : 0 };
+
+    ctx.print(replace, " {:>3.0f}% {} {}/{} ● {}/{} ● {}/s ● {} ETA {}\n",
+        ctx.percent_copied, bar, files_copied, files_total,
+        format_bytes(bytes_copied), format_bytes(bytes_total), format_bytes(ctx.speed),
+        format_time(elapsed), format_time(eta)
     );
 }
 

@@ -10,6 +10,7 @@
 #include "file.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cstddef> // std::size_t
 #include <cstdio> // std::fflush
 #include <format>
@@ -17,6 +18,8 @@
 #include <print>
 #include <tuple>
 #include <vector>
+
+using std::chrono::steady_clock;
 
 ////////////////////////////////////////////////////////////////////////////////
 enum class unlink { never, always, auto_ };
@@ -56,6 +59,11 @@ struct context
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
     double percent_copied = 0;
+
+    steady_clock::time_point start_time = steady_clock::now();
+    steady_clock::time_point last_time = start_time;
+    long last_bytes = 0;
+    double speed = 0;
 
     ////////////////////
     void add_dir_attr(io::path path, io::attrib attr) {
