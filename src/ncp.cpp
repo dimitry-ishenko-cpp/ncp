@@ -12,6 +12,7 @@
 #include <asio.hpp>
 #include <charconv> // std::from_chars
 #include <csignal>
+#include <cstdio> // std::getchar
 #include <exception>
 #include <format>
 #include <future>
@@ -64,7 +65,7 @@ enum class status { failed, copied, moved, unchanged, skipped };
 template <typename... Args>
 auto error_(context& ctx, std::format_string<Args...> fmt, Args&&... args)
 {
-    ctx.print(fmt, std::forward<Args>(args)...);
+    ctx.print(retain, fmt, std::forward<Args>(args)...);
     ctx.error_free.store(false, std::memory_order_relaxed);
     return status::failed;
 }
@@ -89,13 +90,36 @@ inline auto good(status status) {
 }
 
 void verbose(context& ctx, std::string_view act, const io::file& file) {
-    if (ctx.verbose) ctx.print("{}: '{}'\n", act, file.path().string());
+    if (ctx.verbose) ctx.print(retain, "{}: '{}'\n", act, file.path().string());
 }
 void verbose(context& ctx, std::string_view act, const io::file& src, const io::file& tgt) {
-    if (ctx.verbose) ctx.print("{}: '{}' => '{}'\n", act, src.path().string(), tgt.path().string());
+    if (ctx.verbose) ctx.print(retain, "{}: '{}' => '{}'\n", act, src.path().string(), tgt.path().string());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool confirm(context& ctx, std::string_view action, const io::file& file)
+{
+    if (ctx.confirm_all) return true;
+
+    for (auto lock = ctx.get_print_lock();;)
+    {
+        ctx.print_locked(retain, "{} '{}'? [Y/n/a/q] ", action, file.path().string());
+
+        auto c = std::getchar();
+        auto reply = c;
+        while (c != '\n' && c != EOF) c = std::getchar();
+
+        switch (reply)
+        {
+            case 'y': case 'Y': case '\n': return true;
+            case 'n': case 'N': return false;
+            case 'a': case 'A': ctx.confirm_all = true; return true;
+            case EOF: std::print("q\n");
+            case 'q': case 'Q': ctx.quit = true; return false;
+        }
+    }
+}
+
 enum attr_option { include_all, exclude_mode, exclude_time };
 auto get_attr(context& ctx, const io::file& source, attr_option option)
 {
@@ -127,7 +151,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         if (ctx.unlink_ == unlink::never)
             return error(ctx, "not replacing existing file", target);
 
-        if (ctx.interactive && !ctx.confirm("overwrite", target))
+        if (ctx.interactive && !confirm(ctx, "overwrite", target))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -211,7 +235,7 @@ auto copy_directory(context& ctx, io::file source, io::file target)
         if (ctx.unlink_ == unlink::never)
             return error(ctx, "not replacing existing non-dir", target);
 
-        if (ctx.interactive && !ctx.confirm("replace", target))
+        if (ctx.interactive && !confirm(ctx, "replace", target))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -261,7 +285,7 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
         if (ctx.unlink_ == unlink::never)
             return error(ctx, "not replacing existing file", target);
 
-        if (ctx.interactive && !ctx.confirm("replace", target))
+        if (ctx.interactive && !confirm(ctx, "replace", target))
             return status::skipped;
 
         io::remove(target.path(), ec);
@@ -698,7 +722,7 @@ try
 
         if (auto signal = ctx.exit_signal.exchange(0))
         {
-            ctx.print("received signal {}, exiting\n", signal);
+            ctx.print(retain, "received signal {}, exiting\n", signal);
             exit_code = 3;
         }
         else if (!ctx.error_free) exit_code = 2;

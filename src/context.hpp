@@ -12,18 +12,19 @@
 #include <array>
 #include <atomic>
 #include <cstddef> // std::size_t
-#include <cstdio>
+#include <cstdio> // std::fflush
 #include <format>
 #include <mutex>
 #include <print>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
 enum class unlink { never, always, auto_ };
 enum class update { none, all, older, changed, size, };
+
+enum print_option { retain, replace };
 
 struct context
 {
@@ -55,6 +56,8 @@ struct context
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
 
+    std::atomic<bool> confirm_all{ false };
+
     ////////////////////
     void add_dir_attr(io::path path, io::attrib attr) {
         dir_attrs_.emplace_back(std::move(path), std::move(attr));
@@ -65,35 +68,23 @@ struct context
     auto& rmdirs() const noexcept { return rmdirs_; }
 
     ////////////////////
-    bool confirm(std::string_view action, const io::file& file)
+    [[nodiscard]] auto get_print_lock() { return std::unique_lock{mutex_}; }
+
+    template <typename... Args>
+    void print(print_option option, std::format_string<Args...> fmt, Args&&... args)
     {
-        if (confirm_all_) return true;
-
-        std::lock_guard lock{mutex_};
-        for (;;)
-        {
-            print_impl(retain, "{} '{}'? [Y/n/a/q] ", action, file.path().string());
-
-            auto c = std::getchar();
-            auto reply = c;
-            while (c != '\n' && c != EOF) c = std::getchar();
-
-            switch (reply)
-            {
-                case 'y': case 'Y': case '\n': return true;
-                case 'n': case 'N': return false;
-                case 'a': case 'A': confirm_all_ = true; return true;
-                case EOF: std::print("q\n");
-                case 'q': case 'Q': quit = true; return false;
-            }
-        }
+        std::lock_guard guard{mutex_};
+        print_locked(option, fmt, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
-    void print(std::format_string<Args...> fmt, Args&&... args)
+    void print_locked(print_option option, std::format_string<Args...> fmt, Args&&... args)
     {
-        std::lock_guard guard{mutex_};
-        print_impl(retain, fmt, std::forward<Args>(args)...);
+        if (print_ == replace) std::print("\033[{}F\033[K", 1);
+        print_ = option;
+
+        std::print(fmt, std::forward<Args>(args)...);
+        std::fflush(stdout);
     }
 
     void show_progress()
@@ -116,31 +107,20 @@ struct context
         for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
 
         std::lock_guard lock{mutex_};
-        print_impl(replace, " {:>3}% {} {}/{} ● {}/{}\n", percent, bar, fc, ft, human(bc), human(bt));
+        print_locked(replace, " {:>3}% {} {}/{} ● {}/{}\n", percent, bar, fc, ft, human(bc), human(bt));
     }
 
 private:
     ////////////////////
     std::mutex mutex_;
-    enum type { retain, replace } type_ = retain;
+    print_option print_ = retain;
 
-    bool confirm_all_ = false;
     double percent_ = 0;
 
     std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
     std::vector< io::path > rmdirs_;
 
     ////////////////////
-    template <typename... Args>
-    void print_impl(type type, std::format_string<Args...> fmt, Args&&... args)
-    {
-        if (type_ == replace) std::print("\033[{}F\033[K", 1);
-        type_ = type;
-
-        std::print(fmt, std::forward<Args>(args)...);
-        std::fflush(stdout);
-    }
-
     static std::string human(long bytes)
     {
         constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
