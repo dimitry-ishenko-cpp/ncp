@@ -43,8 +43,8 @@ struct context
     bool move = false;
     bool progress = false;
     bool recursive = false;
-    unlink unlink_ = unlink::auto_;
-    update update_ = update::all;
+    enum unlink unlink_ = unlink::auto_;
+    enum update update_ = update::all;
     bool verbose = false;
 
     ////////////////////
