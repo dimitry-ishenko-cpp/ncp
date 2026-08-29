@@ -9,6 +9,7 @@
 #include "context.hpp"
 #include "file.hpp"
 
+#include <array>
 #include <asio.hpp>
 #include <charconv> // std::from_chars
 #include <csignal>
@@ -523,6 +524,45 @@ void process_dirs(context& ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+auto human(long bytes)
+{
+    constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
+
+    auto n = 0;
+    auto dbl_bytes = static_cast<double>(bytes);
+    for (; dbl_bytes >= 1024.0 && n < units.size() - 1; ++n) dbl_bytes /= 1024.0;
+
+    return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
+}
+
+void show_progress(context& ctx)
+{
+    auto files_total = ctx.files_total.load(std::memory_order_relaxed);
+    auto files_copied = ctx.files_copied.load(std::memory_order_relaxed);
+    auto bytes_total = ctx.bytes_total.load(std::memory_order_relaxed);
+    auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
+
+    auto percent_copied = ctx.percent_copied.load(std::memory_order_relaxed);
+    auto percent_new = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
+
+    if (ctx.quit.load(std::memory_order_relaxed)) percent_copied = percent_new;
+    else percent_copied += (percent_new - percent_copied) * 0.33;
+    ctx.percent_copied.store(percent_copied, std::memory_order_relaxed);
+
+    auto percent = static_cast<long>(percent_copied);
+    constexpr auto bar_width = 40;
+    auto bar_fill = percent * bar_width / 100;
+
+    std::string bar;
+    for (auto n = 0; n < bar_fill; ++n) bar += "█";
+    for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
+
+    ctx.print(replace, " {:>3}% {} {}/{} ● {}/{}\n",
+        percent, bar, files_copied, files_total, human(bytes_copied), human(bytes_total)
+    );
+}
+
+////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
 try
@@ -705,7 +745,7 @@ try
             while (!ctx.quit.load(std::memory_order_relaxed))
             {
                 std::this_thread::sleep_for(100ms);
-                ctx.show_progress();
+                show_progress(ctx);
             }
         });
 
@@ -718,7 +758,7 @@ try
         if (ctx.progress)
         {
             progress.wait();
-            ctx.show_progress(); // final status
+            show_progress(ctx); // final status
         }
 
         if (auto signal = ctx.exit_signal.exchange(0))

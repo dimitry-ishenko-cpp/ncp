@@ -9,14 +9,12 @@
 
 #include "file.hpp"
 
-#include <array>
 #include <atomic>
 #include <cstddef> // std::size_t
 #include <cstdio> // std::fflush
 #include <format>
 #include <mutex>
 #include <print>
-#include <string>
 #include <tuple>
 #include <vector>
 
@@ -55,6 +53,7 @@ struct context
 
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
+    std::atomic<double> percent_copied{0};
 
     std::atomic<bool> confirm_all{ false };
 
@@ -87,48 +86,11 @@ struct context
         std::fflush(stdout);
     }
 
-    void show_progress()
-    {
-        auto ft = files_total.load(std::memory_order_relaxed);
-        auto fc = files_copied.load(std::memory_order_relaxed);
-        auto bt = bytes_total.load(std::memory_order_relaxed);
-        auto bc = bytes_copied.load(std::memory_order_relaxed);
-        auto pc = bt ? (100.0 * bc / bt) : 100.0;
-
-        if (quit.load(std::memory_order_relaxed)) percent_ = pc;
-        else percent_ += (pc - percent_) * 0.3;
-
-        auto percent = static_cast<long>(percent_);
-        constexpr auto bar_width = 40;
-        auto bar_fill = percent * bar_width / 100;
-
-        std::string bar;
-        for (auto n = 0; n < bar_fill; ++n) bar += "█";
-        for (auto n = bar_fill; n < bar_width; ++n) bar += "░";
-
-        std::lock_guard lock{mutex_};
-        print_locked(replace, " {:>3}% {} {}/{} ● {}/{}\n", percent, bar, fc, ft, human(bc), human(bt));
-    }
-
 private:
     ////////////////////
     std::mutex mutex_;
     print_option print_ = retain;
 
-    double percent_ = 0;
-
     std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
     std::vector< io::path > rmdirs_;
-
-    ////////////////////
-    static std::string human(long bytes)
-    {
-        constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
-
-        auto n = 0;
-        auto dbl_bytes = static_cast<double>(bytes);
-        for (; dbl_bytes >= 1024.0 && n < units.size() - 1; ++n) dbl_bytes /= 1024.0;
-
-        return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
-    }
 };
