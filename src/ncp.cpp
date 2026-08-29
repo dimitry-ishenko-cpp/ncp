@@ -542,14 +542,11 @@ void show_progress(context& ctx)
     auto bytes_total = ctx.bytes_total.load(std::memory_order_relaxed);
     auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
 
-    auto percent_copied = ctx.percent_copied.load(std::memory_order_relaxed);
     auto percent_new = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
+    if (ctx.quit.load(std::memory_order_relaxed)) ctx.percent_copied = percent_new;
+    else ctx.percent_copied += (percent_new - ctx.percent_copied) * 0.33;
 
-    if (ctx.quit.load(std::memory_order_relaxed)) percent_copied = percent_new;
-    else percent_copied += (percent_new - percent_copied) * 0.33;
-    ctx.percent_copied.store(percent_copied, std::memory_order_relaxed);
-
-    auto percent = static_cast<long>(percent_copied);
+    auto percent = static_cast<long>(ctx.percent_copied);
     constexpr auto bar_width = 40;
     auto bar_fill = percent * bar_width / 100;
 
