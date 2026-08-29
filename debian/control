@@ -4,6 +4,8 @@ Maintainer: Dimitry Ishenko <dimitry.ishenko@gmail.com>
 Build-Depends:
  debhelper-compat (= 13),
  cmake,
+ libasio-dev,
+ pkgconf,
 Standards-Version: 4.7.4
 Vcs-Browser: https://github.com/dimitry-ishenko-cpp/ncp
 Vcs-Git: https://github.com/dimitry-ishenko-cpp/ncp.git
