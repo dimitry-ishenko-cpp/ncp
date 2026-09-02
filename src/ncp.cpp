@@ -623,10 +623,18 @@ std::optional<int> parse(std::string_view text)
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+enum exit_code
+{
+    success = 0,
+    invalid_argument = 1,
+    interrupted = 2,
+    copy_failed = 3,
+};
+
 int main(int argc, char* argv[])
 try
 {
-    int exit_code = 0;
+    auto code = success;
     auto name = io::path{argv[0]}.filename().string();
 
     pgm::args args
@@ -823,20 +831,20 @@ try
         if (auto signal = ctx.exit_signal.exchange(0))
         {
             ctx.print(retain, "received signal {}, exiting\n", signal);
-            exit_code = 3;
+            code = interrupted;
         }
-        else if (!ctx.error_free) exit_code = 2;
+        else if (!ctx.error_free) code = copy_failed;
     }
 
-    return exit_code;
+    return code;
 }
 catch (const io::exception& e)
 {
     std::print("{}: '{}'\n", e.code().message(), e.path1().string());
-    return 1;
+    return invalid_argument;
 }
 catch (const std::exception& e)
 {
     std::print("{}\n", e.what());
-    return 1;
+    return invalid_argument;
 };
