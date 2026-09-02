@@ -81,11 +81,12 @@ void verbose(context& ctx, auto&&... args) {
 ////////////////////////////////////////////////////////////////////////////////
 bool confirm(context& ctx, std::string_view action, const io::file& file)
 {
-    if (ctx.confirm_all) return true;
+    if (ctx.copy_all) return true;
+    if (ctx.skip_all) return false;
 
     for (auto lock = ctx.get_print_lock();;)
     {
-        ctx.print_locked(retain, "{} '{}'? [Y/n/a/q] ", action, file.path().string());
+        ctx.print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, file.path().string());
 
         auto c = std::getchar();
         auto reply = c;
@@ -95,7 +96,10 @@ bool confirm(context& ctx, std::string_view action, const io::file& file)
         {
             case 'y': case 'Y': case '\n': return true;
             case 'n': case 'N': return false;
-            case 'a': case 'A': ctx.confirm_all = true; return true;
+
+            case 'a': case 'A': ctx.copy_all = true; return true;
+            case 's': case 'S': ctx.skip_all = true; return false;
+
             case EOF: std::print("q\n");
             case 'q': case 'Q': ctx.quit = true; return false;
         }

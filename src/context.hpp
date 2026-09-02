@@ -55,7 +55,7 @@ struct context
     std::atomic<bool> quit{ false };
 
     std::atomic<bool> failed{ false }, attr_failed{ false };
-    bool confirm_all = false;
+    bool copy_all = false, skip_all = false;
 
     std::atomic<long> files_total{0}, files_copied{0};
     std::atomic<long> bytes_total{0}, bytes_copied{0};
