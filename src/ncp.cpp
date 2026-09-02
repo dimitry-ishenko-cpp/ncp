@@ -819,8 +819,8 @@ try
         copy_sources(ctx, pool, std::move(sources), std::move(target));
         pool.join();
 
-        if (!ctx.quit) process_dirs(ctx); // don't process dirs on Ctrl+C
-        ctx.quit = true;
+        // don't process dirs on Ctrl+C
+        if (!ctx.quit.exchange(true)) process_dirs(ctx);
 
         if (ctx.progress)
         {
