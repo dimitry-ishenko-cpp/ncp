@@ -1,3 +1,26 @@
+ncp (0.5) unstable; urgency=medium
+
+  * Prepare for 0.5
+  * ncp: add "skip all" option
+  * context: errors => failed, attr_errors => attr_failed
+  * ncp: separate copy/create from attrs setting
+  * ncp: allow some attrs to fail
+  * file: tweak
+  * Refactor printing... again?
+  * ncp: strip some attrs for non-root users
+  * ncp: tweak
+  * context: error_free => errors
+  * ncp: add exit_code enum
+  * misc: add capability functions
+  * ncp: move low-level stuff into misc
+  * file: refactor
+  * ncp: tone down progress bar
+  * ncp: hide ETA at the end
+  * file: add support for ACL
+  * ncp: tweak
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Wed, 02 Sep 2026 17:49:16 -0400
+
 ncp (0.4.2) unstable; urgency=medium
 
   * Prepare for 0.4.2
