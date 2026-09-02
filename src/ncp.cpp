@@ -52,6 +52,11 @@ inline void message(context& ctx, auto type, auto msg, const io::file& source, c
     ctx.print(retain, "{} {} '{}' => '{}': {}\n", type, msg, source.path().string(), target.path().string(), ec.message());
 }
 
+void attr_fail(context& ctx, auto&&... args) {
+    if (ctx.verbose) message(ctx, "E:", std::forward<decltype (args)>(args)...);
+    ctx.attr_errors.store(true, std::memory_order_relaxed);
+}
+
 auto fail(context& ctx, auto&&... args)
 {
     message(ctx, "E:", std::forward<decltype (args)>(args)...);
@@ -117,6 +122,10 @@ auto get_attr(context& ctx, const io::file& source, attr_option option)
         else attr.uid = source.uid();
     }
     return attr;
+}
+
+bool is_attr_error(const std::error_code& ec) {
+    return ec == std::errc::operation_not_permitted || ec == std::errc::not_supported;
 }
 
 auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
@@ -192,13 +201,19 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
     }
     else
     {
-        auto attr = get_attr(ctx, source, include_all);
-        io::modify(target.path(), attr, ec);
-        if (ec) return fail(ctx, "attrs", target, ec);
-        
+        if (auto attr = get_attr(ctx, source, include_all))
+        {
+            io::modify(target.path(), attr, ec);
+            if (ec)
+            {
+                if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
+                else return fail(ctx, "attrs", target, ec);
+            }
+            else verbose(ctx, "attrs", target);
+        }
+
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
         ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-        verbose(ctx, "attrs", target);
 
         if (ctx.move)
         {
@@ -245,13 +260,12 @@ auto copy_directory(context& ctx, io::file source, io::file target)
     {
         io::create_directory(target.path(), ec);
         if (ec) return fail(ctx, "create dir", target, ec);
+        verbose(ctx, "create", target);
     }
 
-    ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-    verbose(ctx, need_create ? "create" : "attrs", target);
-
-    auto attr = get_attr(ctx, source, include_all);
-    ctx.add_dir_attr(std::move(target), attr);
+    if (auto attr = get_attr(ctx, source, include_all))
+        ctx.add_dir_attr(std::move(target), attr);
+    else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
     if (ctx.move) ctx.add_rmdir(std::move(source));
 
@@ -301,11 +315,17 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
     }
     else
     {
-        io::modify(target.path(), attr, ec);
-        if (ec) return fail(ctx, "attrs", target, ec);
-
+        if (attr)
+        {
+            io::modify(target.path(), attr, ec);
+            if (ec)
+            {
+                if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
+                else return fail(ctx, "attrs", target, ec);
+            }
+            else verbose(ctx, "attrs", target);
+        }
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-        verbose(ctx, "attrs", target);
     }
 
     if (ctx.move)
@@ -497,9 +517,12 @@ void process_dirs(context& ctx)
         io::modify(dir.path(), attr, ec);
         if (ec)
         {
-            ctx.files_copied.fetch_sub(1, std::memory_order_relaxed);
-            fail(ctx, "attrs", dir, ec);
+            if (is_attr_error(ec)) attr_fail(ctx, "attrs", dir, ec);
+            else { fail(ctx, "attrs", dir, ec); continue; }
         }
+        else verbose(ctx, "attrs", dir);
+
+        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     }
 
     for (auto&& dir : std::views::reverse(ctx.rmdirs()))
