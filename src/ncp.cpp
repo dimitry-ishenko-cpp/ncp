@@ -54,13 +54,13 @@ inline void message(context& ctx, auto type, auto msg, const io::file& source, c
 
 void attr_fail(context& ctx, auto&&... args) {
     if (ctx.verbose) message(ctx, "E:", std::forward<decltype (args)>(args)...);
-    ctx.attr_errors.store(true, std::memory_order_relaxed);
+    ctx.attr_failed.store(true, std::memory_order_relaxed);
 }
 
 auto fail(context& ctx, auto&&... args)
 {
     message(ctx, "E:", std::forward<decltype (args)>(args)...);
-    ctx.errors.store(true, std::memory_order_relaxed);
+    ctx.failed.store(true, std::memory_order_relaxed);
     return status::failed;
 }
 
@@ -116,7 +116,7 @@ auto get_attr(context& ctx, const io::file& source, attr_option option)
             if (attr.mode)
             {
                 *attr.mode &= ~(io::mode::set_uid | io::mode::set_gid);
-                ctx.attr_errors.store(true, std::memory_order_relaxed);
+                ctx.attr_failed.store(true, std::memory_order_relaxed);
             }
         }
         else attr.uid = source.uid();
@@ -363,12 +363,12 @@ auto copy_symlink(context& ctx, io::file source, io::file target)
 
 auto copy_device(context& ctx, io::file source, io::file target)
 {
-    if (!ctx.keep_devices) 
-        return skip(ctx, "skipping device file", source); 
+    if (!ctx.keep_devices)
+        return skip(ctx, "skipping device file", source);
 
     return copy_generic(ctx, std::move(source), std::move(target), include_all,
-        [](auto&& src, auto&& tgt) { 
-            return tgt.type() == src.type() && tgt.dev_type() == src.dev_type(); 
+        [](auto&& src, auto&& tgt) {
+            return tgt.type() == src.type() && tgt.dev_type() == src.dev_type();
         },
         [](auto&& src, auto&& tgt, std::error_code& ec) {
             if (src.is_block_device())
@@ -380,8 +380,8 @@ auto copy_device(context& ctx, io::file source, io::file target)
 
 auto copy_special(context& ctx, io::file source, io::file target)
 {
-    if (!ctx.keep_special) 
-        return skip(ctx, "special file", source); 
+    if (!ctx.keep_special)
+        return skip(ctx, "special file", source);
 
     return copy_generic(ctx, std::move(source), std::move(target), include_all,
         [](auto&& src, auto&& tgt) {
@@ -880,12 +880,10 @@ try
         }
         else
         {
-            bool errors = ctx.errors, attr_errors = ctx.attr_errors;
+            if (ctx.failed) code = copy_failed;
+            else if (ctx.attr_failed) code = attr_failed;
 
-            if (errors) code = copy_failed;
-            else if (attr_errors) code = attr_failed;
-
-            if (attr_errors) info(ctx, "some attrs could not be preserved");
+            if (ctx.attr_failed) info(ctx, "some attrs could not be preserved");
         }
 
         if (ctx.progress)
