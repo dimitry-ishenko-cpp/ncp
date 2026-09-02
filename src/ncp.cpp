@@ -587,8 +587,8 @@ void show_progress(context& ctx, bool final = false)
             bar += " "; width -= 2;
 
             int done = ctx.percent_copied * width / 100;
-            for (auto n = 0; n < done; ++n) bar += "█";
-            for (auto n = done; n < width; ++n) bar += "░";
+            for (auto n = 0; n < done; ++n) bar += "|";
+            for (auto n = done; n < width; ++n) bar += ".";
         }
     }
     else bar.clear();
