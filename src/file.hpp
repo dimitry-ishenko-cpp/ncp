@@ -48,6 +48,8 @@ struct attrib
     std::optional<io::time> time;
     std::optional<io::gid> gid;
     std::optional<io::uid> uid;
+
+    explicit operator bool() const noexcept { return mode || time || gid || uid; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
