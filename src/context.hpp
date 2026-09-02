@@ -67,12 +67,12 @@ struct context
     double speed = 0;
 
     ////////////////////
-    void add_dir_attr(io::path path, io::attrib attr) {
-        dir_attrs_.emplace_back(std::move(path), std::move(attr));
+    void add_dir_attr(io::file file, io::attrib attr) {
+        dir_attrs_.emplace_back(std::move(file), std::move(attr));
     }
     auto& dir_attrs() const noexcept { return dir_attrs_; }
 
-    void add_rmdir(io::path path) { rmdirs_.push_back(std::move(path)); }
+    void add_rmdir(io::file file) { rmdirs_.push_back(std::move(file)); }
     auto& rmdirs() const noexcept { return rmdirs_; }
 
     ////////////////////
@@ -100,6 +100,6 @@ private:
     std::mutex mutex_;
     print_option print_ = retain;
 
-    std::vector< std::tuple<io::path, io::attrib> > dir_attrs_;
-    std::vector< io::path > rmdirs_;
+    std::vector< std::tuple<io::file, io::attrib> > dir_attrs_;
+    std::vector< io::file > rmdirs_;
 };
