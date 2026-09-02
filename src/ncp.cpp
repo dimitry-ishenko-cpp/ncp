@@ -177,26 +177,37 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             if (ctx.quit.load(std::memory_order_relaxed)) return;
 
             std::error_code ec;
-            auto attr = get_attr(ctx, source, include_all);
-            io::copy_file(source, target, attr, ec,
+            io::copy_file(source, target, ec,
                 [&ctx](io::file_size chunk)
                 {
                     ctx.bytes_copied.fetch_add(chunk, std::memory_order_relaxed);
                     return !ctx.quit.load(std::memory_order_relaxed);
                 });
 
-            if (!ec)
+            if (ec)
             {
-                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                verbose(ctx, "copy", source, target);
+                fail(ctx, "copy", source, target, ec);
+                return;
+            }
+            else verbose(ctx, "copy", source, target);
 
-                if (ctx.move)
+            if (auto attr = get_attr(ctx, source, include_all))
+            {
+                io::modify(target.path(), attr, ec);
+                if (ec)
                 {
-                    io::remove(source.path(), ec);
-                    if (ec) fail(ctx, "remove", source, ec);
+                    if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
+                    else { fail(ctx, "attrs", target, ec); return; }
                 }
             }
-            else fail(ctx, "copy", source, target, ec);
+
+            ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+
+            if (ctx.move)
+            {
+                io::remove(source.path(), ec);
+                if (ec) fail(ctx, "remove", source, ec);
+            }
         });
     }
     else
@@ -260,7 +271,7 @@ auto copy_directory(context& ctx, io::file source, io::file target)
     {
         io::create_directory(target.path(), ec);
         if (ec) return fail(ctx, "create dir", target, ec);
-        verbose(ctx, "create", target);
+        verbose(ctx, "create dir", target);
     }
 
     if (auto attr = get_attr(ctx, source, include_all))
@@ -294,7 +305,6 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
         if (ec) return fail(ctx, "remove", target, ec);
     }
 
-    auto attr = get_attr(ctx, source, option);
     if (need_create)
     {
         if (ctx.move)
@@ -307,26 +317,24 @@ auto copy_generic(context& ctx, io::file source, io::file target, attr_option op
                 return status::moved;
             }
         }
-        create(source, target, attr, ec);
-        if (ec) return fail(ctx, "create", target, ec);
 
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        create(source, target, ec);
+        if (ec) return fail(ctx, "create", target, ec);
         verbose(ctx, "create", target);
     }
-    else
+
+    if (auto attr = get_attr(ctx, source, option))
     {
-        if (attr)
+        io::modify(target.path(), attr, ec);
+        if (ec)
         {
-            io::modify(target.path(), attr, ec);
-            if (ec)
-            {
-                if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
-                else return fail(ctx, "attrs", target, ec);
-            }
-            else verbose(ctx, "attrs", target);
+            if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
+            else return fail(ctx, "attrs", target, ec);
         }
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        else verbose(ctx, "attrs", target);
     }
+
+    ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
     if (ctx.move)
     {
@@ -348,8 +356,8 @@ auto copy_symlink(context& ctx, io::file source, io::file target)
             std::error_code ec;
             return tgt.get_target_path(ec) == link_target;
         },
-        [&link_target](auto&& src, auto&& tgt, auto&& attr, std::error_code& ec) {
-            io::create_symlink(link_target, tgt.path(), attr, ec);
+        [&link_target](auto&& src, auto&& tgt, std::error_code& ec) {
+            io::create_symlink(link_target, tgt.path(), ec);
         });
 }
 
@@ -362,10 +370,10 @@ auto copy_device(context& ctx, io::file source, io::file target)
         [](auto&& src, auto&& tgt) { 
             return tgt.type() == src.type() && tgt.dev_type() == src.dev_type(); 
         },
-        [](auto&& src, auto&& tgt, auto&& attr, std::error_code& ec) {
+        [](auto&& src, auto&& tgt, std::error_code& ec) {
             if (src.is_block_device())
-                io::create_block_device(tgt.path(), src.dev_type(), attr, ec);
-            else io::create_char_device(tgt.path(), src.dev_type(), attr, ec);
+                io::create_block_device(tgt.path(), src.dev_type(), ec);
+            else io::create_char_device(tgt.path(), src.dev_type(), ec);
         }
     );
 }
@@ -379,10 +387,9 @@ auto copy_special(context& ctx, io::file source, io::file target)
         [](auto&& src, auto&& tgt) {
             return tgt.type() == src.type();
         },
-        [](auto&& src, auto&& tgt, auto&& attr, std::error_code& ec) {
-            if (src.is_fifo())
-                io::create_fifo(tgt.path(), attr, ec);
-            else io::create_socket(tgt.path(), attr, ec);
+        [](auto&& src, auto&& tgt, std::error_code& ec) {
+            if (src.is_fifo()) io::create_fifo(tgt.path(), ec);
+            else io::create_socket(tgt.path(), ec);
         });
 }
 
