@@ -32,39 +32,6 @@
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
-void show_usage(const pgm::args& args, const std::string& name)
-{
-    auto preamble = std::format(R"(
-{} – new and improved, now asbestos-free copy utility.)",
-    name);
-
-    std::print("{}\n", args.usage(name, preamble));
-}
-
-void show_version(const std::string& name)
-{
-    std::print("{} version {}\n", name, VERSION);
-}
-
-context* pctx = nullptr;
-extern "C" void signal_handler(int signal)
-{
-    if (pctx)
-    {
-        pctx->exit_signal = signal;
-        pctx->quit = true;
-    }
-}
-
-std::optional<int> parse(std::string_view text)
-{
-    int n;
-    auto from = text.data(), to = from + text.size();
-    auto [p, ec] = std::from_chars(from, to, n);
-    if (ec == std::errc{} && p == to) return n; else return std::nullopt;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 enum class status { failed, copied, moved, unchanged, skipped };
 
 template <typename... Args>
@@ -624,6 +591,39 @@ void show_progress(context& ctx)
     else bar.clear();
 
     ctx.print(replace, "{}{}\n", bar, metric);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+context* pctx = nullptr;
+extern "C" void signal_handler(int signal)
+{
+    if (pctx)
+    {
+        pctx->exit_signal = signal;
+        pctx->quit = true;
+    }
+}
+
+void show_usage(const pgm::args& args, const std::string& name)
+{
+    auto preamble = std::format(R"(
+{} – new and improved, now asbestos-free copy utility.)",
+    name);
+
+    std::print("{}\n", args.usage(name, preamble));
+}
+
+void show_version(const std::string& name)
+{
+    std::print("{} version {}\n", name, VERSION);
+}
+
+std::optional<int> parse(std::string_view text)
+{
+    int n;
+    auto from = text.data(), to = from + text.size();
+    auto [p, ec] = std::from_chars(from, to, n);
+    if (ec == std::errc{} && p == to) return n; else return std::nullopt;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
