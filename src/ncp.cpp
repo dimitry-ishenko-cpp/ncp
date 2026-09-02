@@ -517,7 +517,7 @@ int get_term_width()
     return (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1) ? 80 : w.ws_col;
 }
 
-void show_progress(context& ctx)
+void show_progress(context& ctx, bool final = false)
 {
     auto files_total = ctx.files_total.load(std::memory_order_relaxed);
     auto files_copied = ctx.files_copied.load(std::memory_order_relaxed);
@@ -556,7 +556,9 @@ void show_progress(context& ctx)
     {
         width -= metric.size() - b_x;
 
-        auto time = std::format(" ● {} ETA {}", format_time(elapsed), format_time(eta));
+        std::string time;
+        if (final) time = std::format(" ● {}", format_time(elapsed), format_time(eta));
+        else time = std::format(" ● {} ETA {}", format_time(elapsed), format_time(eta));
         if (width > time.size() - b_x)
         {
             width -= time.size() - b_x;
@@ -569,7 +571,8 @@ void show_progress(context& ctx)
     }
     else
     {
-        metric = std::format(" {} ETA {}", format_time(elapsed), format_time(eta));
+        if (final) metric = std::format(" ● {}", format_time(elapsed), format_time(eta));
+        else metric = std::format(" ● {} ETA {}", format_time(elapsed), format_time(eta));
         if (width > metric.size()) width -= metric.size(); else metric.clear();
     }
 
@@ -822,7 +825,7 @@ try
         if (ctx.progress)
         {
             progress.wait();
-            show_progress(ctx); // final status
+            show_progress(ctx, true); // final status
         }
 
         if (auto signal = ctx.exit_signal.exchange(0))
