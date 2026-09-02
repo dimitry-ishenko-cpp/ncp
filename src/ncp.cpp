@@ -97,7 +97,18 @@ auto get_attr(context& ctx, const io::file& source, attr_option option)
     if (ctx.keep_group) attr.gid = source.gid();
     if (ctx.keep_mode && option != exclude_mode) attr.mode= source.mode();
     if (ctx.keep_time && option != exclude_time) attr.time= source.time();
-    if (ctx.keep_user ) attr.uid = source.uid();
+    if (ctx.keep_user )
+    {
+        if (!ctx.can_chown && source.uid() != ctx.uid)
+        {
+            if (attr.mode)
+            {
+                *attr.mode &= ~(io::mode::set_uid | io::mode::set_gid);
+                ctx.attr_errors.store(true, std::memory_order_relaxed);
+            }
+        }
+        else attr.uid = source.uid();
+    }
     return attr;
 }
 
@@ -629,6 +640,7 @@ enum exit_code
     invalid_argument = 1,
     interrupted = 2,
     copy_failed = 3,
+    attr_failed = 4,
 };
 
 int main(int argc, char* argv[])
@@ -692,6 +704,8 @@ try
     else
     {
         context ctx;
+        ctx.uid = io::get_effective_uid();
+        ctx.can_chown = ctx.uid ? io::have_cap_chown() : true;
 
         std::error_code ec;
         std::vector<io::file> sources;
@@ -833,7 +847,15 @@ try
             ctx.print(retain, "received signal {}, exiting\n", signal);
             code = interrupted;
         }
-        else if (ctx.errors) code = copy_failed;
+        else
+        {
+            bool errors = ctx.errors, attr_errors = ctx.attr_errors;
+
+            if (errors) code = copy_failed;
+            else if (attr_errors) code = attr_failed;
+
+            if (attr_errors) ctx.print(retain, "some attrs could not be preserved\n");
+        }
     }
 
     return code;
