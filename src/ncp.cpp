@@ -8,6 +8,7 @@
 #include "args.hpp"
 #include "context.hpp"
 #include "file.hpp"
+#include "misc.hpp"
 
 #include <array>
 #include <asio.hpp>
@@ -25,9 +26,6 @@
 #include <string_view>
 #include <thread>
 #include <vector>
-
-#include <sys/ioctl.h>
-#include <unistd.h>
 
 using namespace std::chrono_literals;
 
@@ -511,12 +509,6 @@ auto format_time(std::chrono::seconds dur)
     else return std::format("{:%M:%S}", dur);
 }
 
-int get_term_width()
-{
-    struct winsize w;
-    return (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1) ? 80 : w.ws_col;
-}
-
 void show_progress(context& ctx, bool final = false)
 {
     auto files_total = ctx.files_total.load(std::memory_order_relaxed);
@@ -547,7 +539,7 @@ void show_progress(context& ctx, bool final = false)
     constexpr auto min_bar_width = 15, max_bar_width = 41;
     constexpr auto b_x = 2; // ● takes up 3 chars
 
-    auto width = get_term_width();
+    auto width = io::term_width();
 
     auto metric = std::format(" {}/{} ● {}/{}", files_copied, files_total,
         format_bytes(bytes_copied), format_bytes(bytes_total)
