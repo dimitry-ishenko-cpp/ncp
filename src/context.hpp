@@ -51,7 +51,7 @@ struct context
     std::atomic<int> exit_signal{0};
     std::atomic<bool> quit{ false };
 
-    std::atomic<bool> error_free{ true };
+    std::atomic<bool> errors{ false };
     bool confirm_all = false;
 
     std::atomic<long> files_total{0}, files_copied{0};

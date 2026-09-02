@@ -36,7 +36,7 @@ template <typename... Args>
 auto error_(context& ctx, std::format_string<Args...> fmt, Args&&... args)
 {
     ctx.print(retain, fmt, std::forward<Args>(args)...);
-    ctx.error_free.store(false, std::memory_order_relaxed);
+    ctx.errors.store(true, std::memory_order_relaxed);
     return status::failed;
 }
 inline auto error(context& ctx, std::string_view msg, const io::file& file) {
@@ -833,7 +833,7 @@ try
             ctx.print(retain, "received signal {}, exiting\n", signal);
             code = interrupted;
         }
-        else if (!ctx.error_free) code = copy_failed;
+        else if (ctx.errors) code = copy_failed;
     }
 
     return code;
