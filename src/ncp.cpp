@@ -110,12 +110,12 @@ enum attr_option { include_all, exclude_mode, exclude_time };
 auto get_attr(context& ctx, const io::file& source, attr_option option)
 {
     io::attrib attr;
-    if (ctx.keep_group) attr.gid = source.gid();
+    if (ctx.keep_group) attr.gid = source.group_id();
     if (ctx.keep_mode && option != exclude_mode) attr.mode= source.mode();
     if (ctx.keep_time && option != exclude_time) attr.time= source.time();
     if (ctx.keep_user )
     {
-        if (!ctx.can_chown && source.uid() != ctx.uid)
+        if (!ctx.can_chown && source.user_id() != ctx.uid)
         {
             if (attr.mode)
             {
@@ -123,7 +123,7 @@ auto get_attr(context& ctx, const io::file& source, attr_option option)
                 ctx.attr_failed.store(true, std::memory_order_relaxed);
             }
         }
-        else attr.uid = source.uid();
+        else attr.uid = source.user_id();
     }
     return attr;
 }
@@ -372,12 +372,12 @@ auto copy_device(context& ctx, io::file source, io::file target)
 
     return copy_generic(ctx, std::move(source), std::move(target), include_all,
         [](auto&& src, auto&& tgt) {
-            return tgt.type() == src.type() && tgt.dev_type() == src.dev_type();
+            return tgt.type() == src.type() && tgt.device_type() == src.device_type();
         },
         [](auto&& src, auto&& tgt, std::error_code& ec) {
             if (src.is_block_device())
-                io::create_block_device(tgt.path(), src.dev_type(), ec);
-            else io::create_char_device(tgt.path(), src.dev_type(), ec);
+                io::create_block_device(tgt.path(), src.device_type(), ec);
+            else io::create_char_device(tgt.path(), src.device_type(), ec);
         }
     );
 }

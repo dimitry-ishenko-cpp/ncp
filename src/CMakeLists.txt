@@ -11,6 +11,8 @@ pkg_check_modules(cap REQUIRED IMPORTED_TARGET libcap)
 include(GNUInstallDirs)
 
 add_executable(ncp
+    io/file.cpp
+
     file.cpp
     misc.cpp
     ncp.cpp

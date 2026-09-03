@@ -11,7 +11,6 @@
 #include <cerrno>
 #include <chrono>
 #include <memory>
-#include <string>
 #include <string_view>
 
 #include <dirent.h>
@@ -48,107 +47,6 @@ inline auto mtime(time time) noexcept
     return std::array{ timespec{0, UTIME_OMIT}, timespec{sec.count(), nsec.count()} };
 }
 
-}
-
-////////////////////////////////////////////////////////////////////////////////
-file::file(io::path path, bool follow_symlinks, std::error_code& ec) noexcept :
-    path_{std::move(path)}
-{
-    struct stat st{};
-    auto pfn = follow_symlinks ? ::stat : ::lstat;
-
-    if (pfn(path_.c_str(), &st))
-    {
-        if (errno == ENOENT || errno == ENOTDIR)
-        {
-            type_ = file_type::not_found;
-            ec.clear();
-        }
-        else ec = make_error_code(errno);
-    }
-    else
-    {
-        if (S_ISREG(st.st_mode)) type_ = file_type::regular;
-        else if (S_ISDIR (st.st_mode)) type_ = file_type::directory;
-        else if (S_ISLNK (st.st_mode)) type_ = file_type::symlink;
-        else if (S_ISBLK (st.st_mode)) type_ = file_type::block;
-        else if (S_ISCHR (st.st_mode)) type_ = file_type::character;
-        else if (S_ISFIFO(st.st_mode)) type_ = file_type::fifo;
-        else if (S_ISSOCK(st.st_mode)) type_ = file_type::socket;
-        else type_ = file_type::unknown;
-
-        if (type_ == file_type::block)
-        {
-            auto_close dev{ ::open(path_.c_str(), O_RDONLY | O_CLOEXEC) };
-            if (dev.fd >= 0)
-            {
-                uint64_t bytes = 0;
-                if (0 == ::ioctl(dev.fd, BLKGETSIZE64, &bytes)) size_ = bytes;
-            }
-        }
-        else size_ = st.st_size;
-        mode_ = static_cast<io::mode>(st.st_mode & 07777);
-        gid_  = st.st_gid;
-        uid_  = st.st_uid;
-        dev_type_ = st.st_rdev;
-        dev_  = st.st_dev;
-        ino_  = st.st_ino;
-        hardlink_count_ = st.st_nlink;
-
-        using namespace std::chrono;
-        auto tp = sys_time<nanoseconds>(
-            seconds{st.st_mtim.tv_sec} + nanoseconds{st.st_mtim.tv_nsec}
-        );
-        time_ = time::clock::from_sys(tp);
-
-        ec.clear();
-    }
-}
-
-path file::get_target_path(std::error_code& ec) const
-{
-    if (!is_symlink()) { ec = make_error_code(EINVAL); return {}; }
-
-    std::string buf(size_ ? size_ + 1 : 128, '\0');
-    for (;;)
-    {
-        auto len = ::readlink(path_.c_str(), buf.data(), buf.size());
-        if (len < 0)
-        {
-            ec = make_error_code(errno);
-            return {};
-        }
-        else if (len < buf.size())
-        {
-            ec.clear();
-            buf.resize(len);
-            return buf;
-        }
-        else if (buf.size() >= 4096)
-        {
-            ec = make_error_code(ENAMETOOLONG);
-            return {};
-        }
-        else buf.resize(buf.size() * 2, '\0');
-    }
-}
-
-file file::follow_symlinks(std::error_code& ec) const
-{
-    if (!is_symlink())
-    {
-        ec.clear();
-        return *this;
-    }
-    else return file{path_, io::follow_symlinks, ec};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool can_read(const path& path, std::error_code& ec) noexcept
-{
-    if (0 == ::access(path.c_str(), R_OK)) ec.clear();
-    else ec = make_error_code(errno);
-    return !ec;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
