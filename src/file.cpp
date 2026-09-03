@@ -252,16 +252,16 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void create_node(const path& path, mode_t mode, dev rdev, const attrib& attr, std::error_code& ec) noexcept
+void create_node(const path& path, mode_t mode, device rdev, const attrib& attr, std::error_code& ec) noexcept
 {
     if (0 == ::mknod(path.c_str(), mode | 0666, rdev)) modify(path, attr, ec);
     else ec = make_error_code(errno);
 }
 
-void create_block_device(const path& path, dev type, const attrib& attr, std::error_code& ec) noexcept {
+void create_block_device(const path& path, device type, const attrib& attr, std::error_code& ec) noexcept {
     create_node(path, S_IFBLK, type, attr, ec);
 }
-void create_char_device(const path& path, dev type, const attrib& attr, std::error_code& ec) noexcept {
+void create_char_device(const path& path, device type, const attrib& attr, std::error_code& ec) noexcept {
     create_node(path, S_IFCHR, type, attr, ec);
 }
 void create_fifo(const path& path, const attrib& attr, std::error_code& ec) noexcept {

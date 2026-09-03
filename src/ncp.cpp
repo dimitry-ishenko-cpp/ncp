@@ -745,7 +745,7 @@ try
     else
     {
         context ctx;
-        ctx.uid = io::get_effective_uid();
+        ctx.uid = io::effective_user_id();
         ctx.can_chown = ctx.uid ? io::have_cap_chown() : true;
 
         std::error_code ec;

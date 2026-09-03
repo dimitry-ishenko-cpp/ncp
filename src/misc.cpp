@@ -21,7 +21,7 @@ int term_width() noexcept
     return (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1) ? 80 : w.ws_col;
 }
 
-uid get_effective_uid() noexcept { return geteuid(); }
+user_id effective_user_id() noexcept { return geteuid(); }
 
 bool have_cap_chown() noexcept
 {

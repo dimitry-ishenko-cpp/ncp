@@ -7,9 +7,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include <cstdint>
+#include "io/types.hpp"
+
 #include <expected>
-#include <filesystem>
 #include <functional>
 #include <generator>
 #include <memory>
@@ -24,21 +24,6 @@
 namespace io
 {
 
-using exception = std::filesystem::filesystem_error;
-
-using std::filesystem::path;
-using std::filesystem::file_type;
-using file_size = std::uintmax_t;
-using mode = std::filesystem::perms;
-using time = std::filesystem::file_time_type;
-
-using dev = dev_t;
-using gid = gid_t;
-using ino = ino_t;
-using uid = uid_t;
-
-using hardlink_count = std::uintmax_t;
-
 struct follow_symlinks_t { explicit follow_symlinks_t() = default; };
 inline constexpr follow_symlinks_t follow_symlinks{};
 
@@ -46,8 +31,8 @@ struct attrib
 {
     std::optional<io::mode> mode;
     std::optional<io::time> time;
-    std::optional<io::gid> gid;
-    std::optional<io::uid> uid;
+    std::optional<io::group_id> gid;
+    std::optional<io::user_id> uid;
 
     explicit operator bool() const noexcept { return mode || time || gid || uid; }
 };
@@ -61,12 +46,12 @@ class file
     io::file_size size_ = 0;
     io::mode mode_ = mode::unknown;
     io::time time_{};
-    io::gid gid_ = -1;
-    io::uid uid_ = -1;
-    io::dev dev_type_ = 0;
+    io::group_id gid_ = -1;
+    io::user_id uid_ = -1;
+    io::device dev_type_ = 0;
 
-    io::dev dev_ = 0;
-    io::ino ino_ = 0;
+    io::device dev_ = 0;
+    io::index_node ino_ = 0;
     io::hardlink_count hardlink_count_ = 0;
 
 public:
@@ -126,13 +111,13 @@ inline void copy_file(const file& source, const file& target, std::error_code& e
     io::copy_file(source, target, {}, ec, cb);
 }
 
-void create_block_device(const path&, dev, const attrib&, std::error_code&) noexcept;
-inline void create_block_device(const path& path, dev type, std::error_code& ec) noexcept {
+void create_block_device(const path&, device, const attrib&, std::error_code&) noexcept;
+inline void create_block_device(const path& path, device type, std::error_code& ec) noexcept {
     io::create_block_device(path, type, {}, ec);
 }
 
-void create_char_device(const path&, dev, const attrib&, std::error_code&) noexcept;
-inline void create_char_device(const path& path, dev type, std::error_code& ec) noexcept {
+void create_char_device(const path&, device, const attrib&, std::error_code&) noexcept;
+inline void create_char_device(const path& path, device type, std::error_code& ec) noexcept {
     io::create_char_device(path, type, {}, ec);
 }
 

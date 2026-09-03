@@ -7,7 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "file.hpp"
+#include "io/types.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
@@ -15,7 +15,7 @@ namespace io
 
 int term_width() noexcept;
 
-uid get_effective_uid() noexcept;
+user_id effective_user_id() noexcept;
 bool have_cap_chown() noexcept;
 
 }

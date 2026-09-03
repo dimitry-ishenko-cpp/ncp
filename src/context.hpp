@@ -30,7 +30,7 @@ struct context
     std::size_t jobs = 1;
 
     bool can_chown = false;
-    io::uid uid = -1;
+    io::user_id uid = -1;
 
     bool follow_dest_links = false;
     bool interactive = false;
