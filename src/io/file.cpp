@@ -41,62 +41,71 @@ file::file(io::path path, bool follow, std::error_code& ec) noexcept :
     fd_ = desc{ ::open(path_.c_str(), O_PATH | O_CLOEXEC | (follow ? 0 : O_NOFOLLOW)) };
     if (!fd_)
     {
-        if (errno == ENOENT || errno == ENOTDIR)
-        {
-            type_ = file_type::not_found;
-            ec.clear();
-        }
+        if (errno == ENOENT || errno == ENOTDIR) { type_ = file_type::not_found; ec.clear(); }
         else ec = error_code(errno);
-        return;
     }
+    else stat(ec);
+}
 
+file::file(const file& parent, const io::path& name, bool follow, std::error_code& ec) noexcept :
+    path_{parent.path() / name}
+{
+    fd_ = desc{ ::openat(parent.fd_.get(), name.c_str(), O_PATH | O_CLOEXEC | (follow ? 0 : O_NOFOLLOW)) };
+    if (!fd_)
+    {
+        if (errno == ENOENT || errno == ENOTDIR) { type_ = file_type::not_found; ec.clear(); }
+        else ec = error_code(errno);
+    }
+    else stat(ec);
+}
+
+void file::stat(std::error_code& ec) noexcept
+{
     struct stat stat{};
-    if (::fstat(fd_.get(), &stat))
+    if (0 == ::fstat(fd_.get(), &stat))
     {
-        if (errno == ENOENT)
+        if (S_ISREG(stat.st_mode)) type_ = file_type::regular;
+        else if (S_ISDIR (stat.st_mode)) type_ = file_type::directory;
+        else if (S_ISLNK (stat.st_mode)) type_ = file_type::symlink;
+        else if (S_ISBLK (stat.st_mode)) type_ = file_type::block;
+        else if (S_ISCHR (stat.st_mode)) type_ = file_type::character;
+        else if (S_ISFIFO(stat.st_mode)) type_ = file_type::fifo;
+        else if (S_ISSOCK(stat.st_mode)) type_ = file_type::socket;
+        else type_ = file_type::unknown;
+
+        if (type_ == file_type::block)
         {
-            type_ = file_type::not_found;
-            fd_ = desc{};
-            ec.clear();
+            if (desc fd{ ::open(proxy_path(fd_).c_str(), O_RDONLY | O_CLOEXEC) })
+            {
+                std::uint64_t bytes = 0;
+                if (0 == ::ioctl(fd.get(), BLKGETSIZE64, &bytes)) size_ = bytes;
+            }
         }
-        else ec = error_code(errno);
-        return;
+        else size_ = stat.st_size;
+
+        mode_ = static_cast<io::mode>(stat.st_mode & 07777);
+        gid_  = stat.st_gid;
+        uid_  = stat.st_uid;
+        rdev_ = stat.st_rdev;
+        dev_  = stat.st_dev;
+        ino_  = stat.st_ino;
+        nlink_= stat.st_nlink;
+
+        using namespace std::chrono;
+        auto tp = sys_time<nanoseconds>(
+            seconds{stat.st_mtim.tv_sec} + nanoseconds{stat.st_mtim.tv_nsec}
+        );
+        time_ = time::clock::from_sys(tp);
+
+        ec.clear();
     }
-
-    if (S_ISREG(stat.st_mode)) type_ = file_type::regular;
-    else if (S_ISDIR (stat.st_mode)) type_ = file_type::directory;
-    else if (S_ISLNK (stat.st_mode)) type_ = file_type::symlink;
-    else if (S_ISBLK (stat.st_mode)) type_ = file_type::block;
-    else if (S_ISCHR (stat.st_mode)) type_ = file_type::character;
-    else if (S_ISFIFO(stat.st_mode)) type_ = file_type::fifo;
-    else if (S_ISSOCK(stat.st_mode)) type_ = file_type::socket;
-    else type_ = file_type::unknown;
-
-    if (type_ == file_type::block)
+    else if (errno == ENOENT)
     {
-        if (desc fd{ ::open(proxy_path(fd_).c_str(), O_RDONLY | O_CLOEXEC) })
-        {
-            std::uint64_t bytes = 0;
-            if (0 == ::ioctl(fd.get(), BLKGETSIZE64, &bytes)) size_ = bytes;
-        }
+        type_ = file_type::not_found;
+        fd_ = desc{};
+        ec.clear();
     }
-    else size_ = stat.st_size;
-
-    mode_ = static_cast<io::mode>(stat.st_mode & 07777);
-    gid_  = stat.st_gid;
-    uid_  = stat.st_uid;
-    rdev_ = stat.st_rdev;
-    dev_  = stat.st_dev;
-    ino_  = stat.st_ino;
-    nlink_= stat.st_nlink;
-
-    using namespace std::chrono;
-    auto tp = sys_time<nanoseconds>(
-        seconds{stat.st_mtim.tv_sec} + nanoseconds{stat.st_mtim.tv_nsec}
-    );
-    time_ = time::clock::from_sys(tp);
-
-    ec.clear();
+    else ec = error_code(errno);
 }
 
 path file::get_target_path(std::error_code& ec) const

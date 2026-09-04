@@ -42,8 +42,19 @@ class file
 public:
     ////////////////////
     file() noexcept = default;
-    file(io::path path, std::error_code& ec) noexcept : file{std::move(path), false, ec} { }
-    file(io::path path, follow_symlinks_t, std::error_code& ec) noexcept : file{std::move(path), true, ec} { }
+
+    file(io::path path, std::error_code& ec) noexcept :
+        file{std::move(path), false, ec}
+    { }
+    file(io::path path, follow_symlinks_t, std::error_code& ec) noexcept :
+        file{std::move(path), true, ec}
+    { }
+    file(const file& parent, const io::path& name, std::error_code& ec) noexcept :
+        file{parent, name, false, ec}
+    { }
+    file(const file& parent, const io::path& name, follow_symlinks_t, std::error_code& ec) noexcept :
+        file{parent, name, true, ec}
+    { }
 
     bool empty() const noexcept { return type_ == file_type::none; }
     explicit operator bool() const noexcept { return !empty(); }
@@ -91,6 +102,8 @@ public:
 
 private:
     file(io::path, bool follow, std::error_code&) noexcept;
+    file(const file& parent, const io::path& name, bool follow, std::error_code&) noexcept;
+    void stat(std::error_code&) noexcept;
 };
 
 }
