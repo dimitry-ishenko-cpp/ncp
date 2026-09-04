@@ -30,8 +30,9 @@ class file
     io::mode mode_ = mode::unknown;
     io::time time_{};
 
-    io::group_id gid_ = -1;
-    io::user_id uid_ = -1;
+    static constexpr auto none = -1;
+    io::group_id gid_ = none;
+    io::user_id uid_ = none;
 
     io::device dev_ = 0;
     io::index_node ino_ = 0;
@@ -100,7 +101,16 @@ public:
         return lhs.exists() && rhs.exists() && lhs.device() == rhs.device() && lhs.index_node() == rhs.index_node();
     }
 
+    ////////////////////
+    void mode(io::mode, std::error_code&) noexcept;
+    void time(io::time, std::error_code&) noexcept;
+
+    void group_id(io::user_id uid, std::error_code& ec) noexcept { owner(uid, none, ec); }
+    void user_id(io::group_id gid, std::error_code& ec) noexcept { owner(none, gid, ec); }
+    void owner(io::user_id, io::group_id, std::error_code&) noexcept;
+
 private:
+    ////////////////////
     file(io::path, bool follow, std::error_code&) noexcept;
     file(const file& parent, const io::path& name, bool follow, std::error_code&) noexcept;
     void stat(std::error_code&) noexcept;

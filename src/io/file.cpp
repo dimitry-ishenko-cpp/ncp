@@ -8,6 +8,7 @@
 #include "file.hpp"
 
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <format>
 
@@ -150,6 +151,46 @@ file file::follow_symlinks(std::error_code& ec) const
         target.path_ = path_;
     }
     return target;
+}
+
+void file::mode(io::mode mode, std::error_code& ec) noexcept
+{
+    if (is_symlink()) { ec.clear(); return; }
+
+    desc fd{ ::open(proxy_path(fd_).c_str(), O_RDONLY | O_CLOEXEC) };
+    if (fd && 0 == ::fchmod(fd.get(), static_cast<::mode_t>(mode)))
+    {
+        mode_ = mode;
+        ec.clear();
+    }
+    else ec = error_code(errno);
+}
+
+void file::time(io::time time, std::error_code& ec) noexcept
+{
+    using namespace std::chrono;
+    auto dur = time::clock::to_sys(time).time_since_epoch();
+    auto sec = duration_cast<seconds>(dur);
+    auto nsec = duration_cast<nanoseconds>(dur - sec);
+
+    timespec times[2] = { {0, UTIME_OMIT}, {sec.count(), nsec.count()} };
+    if (0 == ::utimensat(fd_.get(), "", times, AT_EMPTY_PATH))
+    {
+        time_ = time;
+        ec.clear();
+    }
+    else ec = error_code(errno);
+}
+
+void file::owner(io::user_id uid, io::group_id gid, std::error_code& ec) noexcept
+{
+    if (0 == ::fchownat(fd_.get(), "", uid, gid, AT_EMPTY_PATH))
+    {
+        if (uid != none) uid_ = uid;
+        if (gid != none) gid_ = gid;
+        ec.clear();
+    }
+    else ec = error_code(errno);
 }
 
 }
