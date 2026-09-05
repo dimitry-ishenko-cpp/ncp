@@ -193,4 +193,50 @@ void file::owner(io::user_id uid, io::group_id gid, std::error_code& ec) noexcep
     else ec = error_code(errno);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+file create_directory(const file& parent, const path& name, std::error_code& ec) noexcept
+{
+    file dir;
+    if (0 == ::mkdirat(parent.fd().get(), name.c_str(), 0777))
+        dir = file{parent, name, ec};
+    else ec = error_code(errno);
+    return dir;
+}
+
+file create_symlink(const file& parent, const path& name, const path& link_target, std::error_code& ec) noexcept
+{
+    file link;
+    if (0 == ::symlinkat(link_target.c_str(), parent.fd().get(), name.c_str()))
+        link = file{parent, name, ec};
+    else ec = error_code(errno);
+    return link;
+}
+
+namespace
+{
+
+file create_node(const file& parent, const path& name, mode_t type, device rdev, std::error_code& ec) noexcept
+{
+    file node;
+    if (0 == ::mknodat(parent.fd().get(), name.c_str(), type | 0666, rdev))
+        node = file{parent, name, ec};
+    else ec = error_code(errno);
+    return node;
+}
+
+}
+
+file create_block_device(const file& parent, const path& name, device rdev, std::error_code& ec) noexcept {
+    return create_node(parent, name, S_IFBLK, rdev, ec);
+}
+file create_char_device(const file& parent, const path& name, device rdev, std::error_code& ec) noexcept {
+    return create_node(parent, name, S_IFCHR, rdev, ec);
+}
+file create_fifo(const file& parent, const path& name, std::error_code& ec) noexcept {
+    return create_node(parent, name, S_IFIFO, 0, ec);
+}
+file create_socket(const file& parent, const path& name, std::error_code& ec) noexcept {
+    return create_node(parent, name, S_IFSOCK, 0, ec);
+}
+
 }

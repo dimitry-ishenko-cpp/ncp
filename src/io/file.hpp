@@ -116,4 +116,15 @@ private:
     void stat(std::error_code&) noexcept;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+file create_directory(const file& parent, const path& name, std::error_code&) noexcept;
+
+file create_symlink(const file& parent, const path& name, const path& link_target, std::error_code&) noexcept;
+
+file create_block_device(const file& parent, const path& name, device, std::error_code&) noexcept;
+file create_char_device(const file& parent, const path& name, device, std::error_code&) noexcept;
+
+file create_fifo(const file& parent, const path& name, std::error_code&) noexcept;
+file create_socket(const file& parent, const path& name, std::error_code&) noexcept;
+
 }
