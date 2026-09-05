@@ -61,6 +61,7 @@ public:
     explicit operator bool() const noexcept { return !empty(); }
 
     const auto& path() const noexcept { return path_; }
+    const auto& fd() const noexcept { return fd_; }
 
     ////////////////////
     auto type() const noexcept { return type_; }
