@@ -57,9 +57,6 @@ public:
         file{parent, name, true, ec}
     { }
 
-    bool empty() const noexcept { return type_ == file_type::none; }
-    explicit operator bool() const noexcept { return !empty(); }
-
     const auto& path() const noexcept { return path_; }
     const auto& fd() const noexcept { return fd_; }
 
@@ -79,9 +76,9 @@ public:
     auto device_type() const noexcept { return rdev_; }
 
     ////////////////////
-    bool not_found() const noexcept { return type_ == file_type::not_found; }
-    bool exists() const noexcept { return !empty() && !not_found(); }
+    explicit operator bool() const noexcept { return !!fd_; }
 
+    bool not_found      () const noexcept { return type_ == file_type::not_found; }
     bool is_regular_file() const noexcept { return type_ == file_type::regular;   }
     bool is_directory   () const noexcept { return type_ == file_type::directory; }
     bool is_symlink     () const noexcept { return type_ == file_type::symlink;   }
@@ -99,7 +96,7 @@ public:
     io::path get_target_path(std::error_code&) const;
 
     friend bool operator==(const file& lhs, const file& rhs) noexcept {
-        return lhs.exists() && rhs.exists() && lhs.device() == rhs.device() && lhs.index_node() == rhs.index_node();
+        return lhs.device() == rhs.device() && lhs.index_node() == rhs.index_node();
     }
 
     ////////////////////

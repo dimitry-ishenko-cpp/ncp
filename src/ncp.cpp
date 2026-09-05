@@ -134,7 +134,7 @@ bool is_attr_error(const std::error_code& ec) {
 
 auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
-    if (target.exists() && ctx.update_ == update::none) return status::unchanged;
+    if (target && ctx.update_ == update::none) return status::unchanged;
 
     bool is_match = false;
     if (target.is_regular_file()) switch (ctx.update_)
@@ -146,8 +146,8 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
     }
 
     std::error_code ec;
-    bool need_create = !target.exists() || !is_match || ctx.unlink_ == unlink::always;
-    if (target.exists() && need_create)
+    bool need_create = !target || !is_match || ctx.unlink_ == unlink::always;
+    if (target && need_create)
     {
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "exists", target);
@@ -242,13 +242,13 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
 
 auto copy_directory(context& ctx, io::file source, io::file target)
 {
-    bool need_create = !target.exists() || !target.is_directory();
+    bool need_create = !target || !target.is_directory();
     if (!need_create && ctx.update_ == update::none) return status::unchanged;
 
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
 
     std::error_code ec;
-    if (target.exists() && need_create)
+    if (target && need_create)
     {
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "exists", target);
@@ -291,13 +291,13 @@ template <typename MatchFn, typename CreateFn>
 auto copy_generic(context& ctx, io::file source, io::file target, attr_option option,
     MatchFn&& is_match, CreateFn&& create)
 {
-    if (target.exists() && ctx.update_ == update::none) return status::unchanged;
+    if (target && ctx.update_ == update::none) return status::unchanged;
 
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
 
     std::error_code ec;
-    bool need_create = !target.exists() || !is_match(source, target) || ctx.unlink_ == unlink::always;
-    if (target.exists() && need_create)
+    bool need_create = !target || !is_match(source, target) || ctx.unlink_ == unlink::always;
+    if (target && need_create)
     {
         if (ctx.unlink_ == unlink::never)
             return fail(ctx, "exists", target);
