@@ -11,7 +11,6 @@
 #include "types.hpp"
 
 #include <system_error> // std::error_code
-#include <utility>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
@@ -41,24 +40,21 @@ class file
     io::device rdev_ = 0;
 
     ////////////////////
-    file(const file& parent, io::path path, bool follow, std::error_code&) noexcept;
+    file(const file& parent, const io::path&, bool follow, std::error_code&) noexcept;
 
 public:
     ////////////////////
     file() noexcept = default;
 
-    file(io::path path, std::error_code& ec) noexcept :
-        file{{}, std::move(path), false, ec}
+    file(const file& parent, const io::path& name, std::error_code& ec) noexcept :
+        file{parent, name, false, ec}
     { }
-    file(io::path path, follow_symlinks_t, std::error_code& ec) noexcept :
-        file{{}, std::move(path), true, ec}
+    file(const file& parent, const io::path& name, follow_symlinks_t, std::error_code& ec) noexcept :
+        file{parent, name, true, ec}
     { }
-    file(const file& parent, io::path name, std::error_code& ec) noexcept :
-        file{parent, std::move(name), false, ec}
-    { }
-    file(const file& parent, io::path name, follow_symlinks_t, std::error_code& ec) noexcept :
-        file{parent, std::move(name), true, ec}
-    { }
+
+    file(const io::path& path, std::error_code& ec) noexcept : file{{}, path, false, ec} { }
+    file(const io::path& path, follow_symlinks_t, std::error_code& ec) noexcept : file{{}, path, true, ec} { }
 
     const auto& path() const noexcept { return path_; }
     const auto& fd() const noexcept { return fd_; }
