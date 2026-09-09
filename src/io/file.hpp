@@ -40,21 +40,24 @@ class file
 
     io::device rdev_ = 0;
 
+    ////////////////////
+    file(const file& parent, io::path path, bool follow, std::error_code&) noexcept;
+
 public:
     ////////////////////
     file() noexcept = default;
 
     file(io::path path, std::error_code& ec) noexcept :
-        file{std::move(path), false, ec}
+        file{{}, std::move(path), false, ec}
     { }
     file(io::path path, follow_symlinks_t, std::error_code& ec) noexcept :
-        file{std::move(path), true, ec}
+        file{{}, std::move(path), true, ec}
     { }
-    file(const file& parent, const io::path& name, std::error_code& ec) noexcept :
-        file{parent, name, false, ec}
+    file(const file& parent, io::path name, std::error_code& ec) noexcept :
+        file{parent, std::move(name), false, ec}
     { }
-    file(const file& parent, const io::path& name, follow_symlinks_t, std::error_code& ec) noexcept :
-        file{parent, name, true, ec}
+    file(const file& parent, io::path name, follow_symlinks_t, std::error_code& ec) noexcept :
+        file{parent, std::move(name), true, ec}
     { }
 
     const auto& path() const noexcept { return path_; }
@@ -106,12 +109,6 @@ public:
     void group_id(io::user_id uid, std::error_code& ec) noexcept { owner(uid, none, ec); }
     void user_id(io::group_id gid, std::error_code& ec) noexcept { owner(none, gid, ec); }
     void owner(io::user_id, io::group_id, std::error_code&) noexcept;
-
-private:
-    ////////////////////
-    file(io::path, bool follow, std::error_code&) noexcept;
-    file(const file& parent, const io::path& name, bool follow, std::error_code&) noexcept;
-    void stat(std::error_code&) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -29,6 +29,8 @@ inline auto error_code(int val) noexcept {
     return std::error_code{val, std::generic_category()};
 }
 
+inline auto fd_or_cwd(const file& parent) { return parent ? parent.fd().get() : AT_FDCWD; }
+
 inline auto proxy_path(const desc& fd) noexcept {
     return std::format("/proc/self/fd/{}", fd.get());
 }
@@ -36,32 +38,17 @@ inline auto proxy_path(const desc& fd) noexcept {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-file::file(io::path path, bool follow, std::error_code& ec) noexcept :
-    path_{std::move(path)}
+file::file(const file& parent, io::path path, bool follow, std::error_code& ec) noexcept :
+    path_{parent ? parent.path() / path : std::move(path)}
 {
-    fd_ = desc{ ::open(path_.c_str(), O_PATH | O_CLOEXEC | (follow ? 0 : O_NOFOLLOW)) };
+    fd_ = desc{ ::openat(fd_or_cwd(parent), path.c_str(), O_PATH | O_CLOEXEC | (follow ? 0 : O_NOFOLLOW)) };
     if (!fd_)
     {
         if (errno == ENOENT || errno == ENOTDIR) { type_ = file_type::not_found; ec.clear(); }
         else ec = error_code(errno);
+        return;
     }
-    else stat(ec);
-}
 
-file::file(const file& parent, const io::path& name, bool follow, std::error_code& ec) noexcept :
-    path_{parent.path() / name}
-{
-    fd_ = desc{ ::openat(parent.fd_.get(), name.c_str(), O_PATH | O_CLOEXEC | (follow ? 0 : O_NOFOLLOW)) };
-    if (!fd_)
-    {
-        if (errno == ENOENT || errno == ENOTDIR) { type_ = file_type::not_found; ec.clear(); }
-        else ec = error_code(errno);
-    }
-    else stat(ec);
-}
-
-void file::stat(std::error_code& ec) noexcept
-{
     struct stat stat{};
     if (0 == ::fstat(fd_.get(), &stat))
     {
