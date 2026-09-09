@@ -226,4 +226,16 @@ file create_socket(const file& parent, const path& name, std::error_code& ec) no
     return create_node(parent, name, S_IFSOCK, 0, ec);
 }
 
+void remove(const file& parent, const path& name, std::error_code& ec) noexcept
+{
+    if (0 == ::unlinkat(fd_or_cwd(parent), name.c_str(), 0)) ec.clear();
+    else ec = error_code(errno);
+}
+
+void remove_directory(const file& parent, const path& name, std::error_code& ec) noexcept
+{
+    if (0 == ::unlinkat(fd_or_cwd(parent), name.c_str(), AT_REMOVEDIR)) ec.clear();
+    else ec = error_code(errno);
+}
+
 }

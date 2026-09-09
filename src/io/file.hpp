@@ -138,4 +138,10 @@ inline file create_fifo(const path& name, std::error_code& ec) noexcept { return
 file create_socket(const file& parent, const path& name, std::error_code&) noexcept;
 inline file create_socket(const path& name, std::error_code& ec) noexcept { return io::create_socket({}, name, ec); }
 
+void remove(const file& parent, const path& name, std::error_code&) noexcept;
+inline void remove(const path& name, std::error_code& ec) noexcept { remove({}, name, ec); }
+
+void remove_directory(const file& parent, const path& name, std::error_code&) noexcept;
+inline void remove_directory(const path& name, std::error_code& ec) noexcept { remove_directory({}, name, ec); }
+
 }
