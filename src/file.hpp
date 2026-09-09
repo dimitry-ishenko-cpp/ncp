@@ -40,30 +40,6 @@ inline void copy_file(const file& source, const file& target, std::error_code& e
     io::copy_file(source, target, {}, ec, cb);
 }
 
-void create_block_device(const path&, device, const attrib&, std::error_code&) noexcept;
-inline void create_block_device(const path& path, device type, std::error_code& ec) noexcept {
-    io::create_block_device(path, type, {}, ec);
-}
-
-void create_char_device(const path&, device, const attrib&, std::error_code&) noexcept;
-inline void create_char_device(const path& path, device type, std::error_code& ec) noexcept {
-    io::create_char_device(path, type, {}, ec);
-}
-
-void create_directory(const path&, const attrib&, std::error_code&) noexcept;
-inline void create_directory(const path& path, std::error_code& ec) noexcept { io::create_directory(path, {}, ec); }
-
-void create_fifo(const path&, const attrib&, std::error_code&) noexcept;
-inline void create_fifo(const path& path, std::error_code& ec) noexcept { io::create_fifo(path, {}, ec); }
-
-void create_socket(const path&, const attrib&, std::error_code&) noexcept;
-inline void create_socket(const path& path, std::error_code& ec) noexcept { io::create_socket(path, {}, ec); }
-
-void create_symlink(const path& to, const path& new_link, const attrib&, std::error_code&) noexcept;
-inline void create_symlink(const path& to, const path& new_link, std::error_code& ec) noexcept {
-    io::create_symlink(to, new_link, {}, ec);
-}
-
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
 
 void modify(const path&, const attrib&, std::error_code&) noexcept;

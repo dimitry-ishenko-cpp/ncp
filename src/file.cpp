@@ -150,46 +150,6 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void create_node(const path& path, mode_t mode, device rdev, const attrib& attr, std::error_code& ec) noexcept
-{
-    if (0 == ::mknod(path.c_str(), mode | 0666, rdev)) modify(path, attr, ec);
-    else ec = make_error_code(errno);
-}
-
-void create_block_device(const path& path, device type, const attrib& attr, std::error_code& ec) noexcept {
-    create_node(path, S_IFBLK, type, attr, ec);
-}
-void create_char_device(const path& path, device type, const attrib& attr, std::error_code& ec) noexcept {
-    create_node(path, S_IFCHR, type, attr, ec);
-}
-void create_fifo(const path& path, const attrib& attr, std::error_code& ec) noexcept {
-    create_node(path, S_IFIFO, 0, attr, ec);
-}
-void create_socket(const path& path, const attrib& attr, std::error_code& ec) noexcept {
-    create_node(path, S_IFSOCK, 0, attr, ec);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void create_directory(const path& path, const attrib& attr, std::error_code& ec) noexcept
-{
-    if (0 == ::mkdir(path.c_str(), 0777)) modify(path, attr, ec);
-    else if (errno == EEXIST)
-    {
-        struct stat st{};
-        if (0 == ::lstat(path.c_str(), &st) && S_ISDIR(st.st_mode)) modify(path, attr, ec);
-        else ec = make_error_code(EEXIST);
-    }
-    else ec = make_error_code(errno);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void create_symlink(const path& to, const path& new_link, const attrib& attr, std::error_code& ec) noexcept
-{
-    if (0 == ::symlink(to.c_str(), new_link.c_str())) modify(new_link, attr, ec);
-    else ec = make_error_code(errno);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 std::generator<std::expected<path, std::error_code>> directory_iterator(const path& path)
 {
     auto dir_close = [](DIR* p) { ::closedir(p); };

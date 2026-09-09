@@ -113,13 +113,29 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 file create_directory(const file& parent, const path& name, std::error_code&) noexcept;
+inline file create_directory(const path& name, std::error_code& ec) noexcept {
+    return io::create_directory({}, name, ec);
+}
 
 file create_symlink(const file& parent, const path& name, const path& link_target, std::error_code&) noexcept;
+inline file create_symlink(const path& name, const path& link_target, std::error_code& ec) noexcept {
+    return io::create_symlink({}, name, link_target, ec);
+}
 
 file create_block_device(const file& parent, const path& name, device, std::error_code&) noexcept;
+inline file create_block_device(const path& name, device rdev, std::error_code& ec) noexcept {
+    return io::create_block_device({}, name, rdev, ec);
+}
+
 file create_char_device(const file& parent, const path& name, device, std::error_code&) noexcept;
+inline file create_char_device(const path& name, device rdev, std::error_code& ec) noexcept {
+    return io::create_char_device({}, name, rdev, ec);
+}
 
 file create_fifo(const file& parent, const path& name, std::error_code&) noexcept;
+inline file create_fifo(const path& name, std::error_code& ec) noexcept { return io::create_fifo({}, name, ec); }
+
 file create_socket(const file& parent, const path& name, std::error_code&) noexcept;
+inline file create_socket(const path& name, std::error_code& ec) noexcept { return io::create_socket({}, name, ec); }
 
 }
