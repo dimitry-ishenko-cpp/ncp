@@ -12,6 +12,7 @@ include(GNUInstallDirs)
 
 add_executable(ncp
     io/file.cpp
+    io/misc.cpp
 
     file.cpp
     misc.cpp

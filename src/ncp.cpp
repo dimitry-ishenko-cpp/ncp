@@ -8,6 +8,8 @@
 #include "args.hpp"
 #include "context.hpp"
 #include "file.hpp"
+#include "io/file.hpp"
+#include "io/misc.hpp"
 #include "misc.hpp"
 
 #include <array>
@@ -860,6 +862,8 @@ try
         pctx = &ctx;
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
+
+        io::raise_open_file_limit(ec);
 
         std::future<void> progress;
         if (ctx.progress) progress = std::async(std::launch::async, [&ctx]
