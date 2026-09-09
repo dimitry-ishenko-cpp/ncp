@@ -29,7 +29,7 @@ inline auto error_code(int val) noexcept {
     return std::error_code{val, std::generic_category()};
 }
 
-inline auto fd_or_cwd(const file& parent) { return parent ? parent.fd().get() : AT_FDCWD; }
+inline auto fd_or_cwd(const file& parent) { return parent.empty() ? AT_FDCWD : parent.fd().get(); }
 
 inline auto proxy_path(const desc& fd) noexcept {
     return std::format("/proc/self/fd/{}", fd.get());
@@ -39,7 +39,7 @@ inline auto proxy_path(const desc& fd) noexcept {
 
 ////////////////////////////////////////////////////////////////////////////////
 file::file(const file& parent, io::path path, bool follow, std::error_code& ec) noexcept :
-    path_{parent ? parent.path() / path : std::move(path)}
+    path_{parent.empty() ? std::move(path) : parent.path() / path}
 {
     fd_ = desc{ ::openat(fd_or_cwd(parent), path.c_str(), O_PATH | O_CLOEXEC | (follow ? 0 : O_NOFOLLOW)) };
     if (!fd_)

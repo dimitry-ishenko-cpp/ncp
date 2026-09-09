@@ -79,6 +79,7 @@ public:
     auto device_type() const noexcept { return rdev_; }
 
     ////////////////////
+    bool empty() const noexcept { return type_ == file_type::none; }
     explicit operator bool() const noexcept { return !!fd_; }
 
     bool not_found      () const noexcept { return type_ == file_type::not_found; }
