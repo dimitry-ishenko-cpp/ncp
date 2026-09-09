@@ -363,7 +363,7 @@ auto copy_symlink(context& ctx, io::file source, io::file target)
             return tgt.get_target_path(ec) == link_target;
         },
         [&link_target](auto&& src, auto&& tgt, std::error_code& ec) {
-            io::create_symlink(link_target, tgt.path(), ec);
+            io::create_symlink(tgt.path(), link_target, ec);
         });
 }
 
