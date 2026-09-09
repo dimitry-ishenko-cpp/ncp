@@ -72,8 +72,8 @@ file::file(const file& parent, io::path path, bool follow, std::error_code& ec) 
         else size_ = stat.st_size;
 
         mode_ = static_cast<io::mode>(stat.st_mode & 07777);
-        gid_  = stat.st_gid;
         uid_  = stat.st_uid;
+        gid_  = stat.st_gid;
         rdev_ = stat.st_rdev;
         dev_  = stat.st_dev;
         ino_  = stat.st_ino;

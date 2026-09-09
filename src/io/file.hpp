@@ -31,8 +31,8 @@ class file
     io::time time_{};
 
     static constexpr auto none = -1;
-    io::group_id gid_ = none;
     io::user_id uid_ = none;
+    io::group_id gid_ = none;
 
     io::device dev_ = 0;
     io::index_node ino_ = 0;
@@ -69,8 +69,8 @@ public:
     auto mode() const noexcept { return mode_; }
     auto time() const noexcept { return time_; }
 
-    auto group_id() const noexcept { return gid_; }
     auto user_id() const noexcept { return uid_; }
+    auto group_id() const noexcept { return gid_; }
 
     auto device() const noexcept { return dev_; }
     auto index_node() const noexcept { return ino_; }
@@ -107,8 +107,8 @@ public:
     void mode(io::mode, std::error_code&) noexcept;
     void time(io::time, std::error_code&) noexcept;
 
-    void group_id(io::user_id uid, std::error_code& ec) noexcept { owner(uid, none, ec); }
-    void user_id(io::group_id gid, std::error_code& ec) noexcept { owner(none, gid, ec); }
+    void user_id(io::user_id uid, std::error_code& ec) noexcept { owner(uid, none, ec); }
+    void group_id(io::group_id gid, std::error_code& ec) noexcept { owner(none, gid, ec); }
     void owner(io::user_id, io::group_id, std::error_code&) noexcept;
 };
 
