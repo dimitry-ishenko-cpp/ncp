@@ -770,7 +770,7 @@ try
         {
             // DESTINATION will capture the last positional parameter,
             // but if --target was specified that value belongs in SOURCES
-            if (target) sources.push_back(std::move(target));
+            if (!target.empty()) sources.push_back(std::move(target));
 
             target = io::file{args["--target"].value(), io::follow_symlinks, ec};
             if (ec) throw io::exception{"main", target.path(), ec};
@@ -781,7 +781,7 @@ try
         }
         else
         {
-            if (!target) throw pgm::missing_argument{
+            if (target.empty()) throw pgm::missing_argument{
                 "neither DESTINATION nor --target was specified"
             };
 
