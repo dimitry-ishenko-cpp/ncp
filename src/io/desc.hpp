@@ -34,6 +34,8 @@ public:
 
     constexpr explicit operator bool() const noexcept { return fd_ != none; }
     constexpr auto get() const noexcept { return fd_; }
+
+    constexpr int release() noexcept { return std::exchange(fd_, none); }
 };
 
 }
