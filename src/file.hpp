@@ -40,8 +40,6 @@ inline void copy_file(const file& source, const file& target, std::error_code& e
     io::copy_file(source, target, {}, ec, cb);
 }
 
-std::generator<std::expected<path, std::error_code>> directory_iterator(const path&);
-
 void modify(const path&, const attrib&, std::error_code&) noexcept;
 
 void rename(const path&, const path&, std::error_code&) noexcept;

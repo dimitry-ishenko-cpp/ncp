@@ -150,29 +150,6 @@ void copy_file(const file& source, const file& target, const attrib& attr, std::
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::generator<std::expected<path, std::error_code>> directory_iterator(const path& path)
-{
-    auto dir_close = [](DIR* p) { ::closedir(p); };
-    std::unique_ptr<DIR, decltype (dir_close)> dirp{ ::opendir(path.c_str()) };
-
-    if (dirp)
-        for (;;)
-        {
-            errno = 0;
-            if (auto e = readdir(dirp.get()))
-            {
-                std::string_view name = e->d_name;
-                if (name != "." && name != "..") co_yield path / name;
-            }
-            else
-            {
-                if (errno) co_yield std::unexpected(make_error_code(errno));
-                break;
-            }
-        }
-    else co_yield std::unexpected(make_error_code(errno));
-}
-
 void modify(const path& path, const attrib& attr, std::error_code& ec) noexcept
 {
     if (attr.mode && ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode)))

@@ -6,7 +6,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 #include "context.hpp"
-#include "file.hpp"
 #include "io/file.hpp"
 #include "io/misc.hpp"
 #include "pgm/args.hpp"
@@ -439,12 +438,12 @@ struct entry { io::file file; bool descend; };
 
 std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
 {
-    for (auto&& expected_path : io::directory_iterator(dir.path()))
-        if (expected_path)
+    for (auto&& name : io::directory_iterator(dir))
+        if (name)
         {
             std::error_code ec;
-            auto child = ctx.keep_links ? io::file{*expected_path, ec}
-                : io::file{*expected_path, io::follow_symlinks, ec};
+            auto child = ctx.keep_links ? io::file{dir, name.value(), ec}
+                : io::file{dir, name.value(), io::follow_symlinks, ec};
             if (ec) { fail(ctx, "access", child, ec); continue; }
 
             entry entry{ child, true };
@@ -453,7 +452,7 @@ std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
             if (child.is_directory() && entry.descend)
                 co_yield std::ranges::elements_of( walk_tree(ctx, child) );
         }
-        else fail(ctx, "read dir", dir, expected_path.error());
+        else fail(ctx, "read dir", dir, name.error());
 }
 
 void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
