@@ -400,7 +400,7 @@ auto copy_special(context& ctx, io::file source, io::file target)
 
 auto copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
 {
-    if (ctx.follow_dest_links && target.is_symlink() && !source.is_symlink())
+    if (target.is_symlink() && !source.is_symlink())
     {
         std::error_code ec;
         target = target.follow_symlinks(ec);
@@ -450,14 +450,9 @@ std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
         if (expected_path)
         {
             std::error_code ec;
-            io::file child{*expected_path, ec};
+            auto child = ctx.keep_links ? io::file{*expected_path, ec}
+                : io::file{*expected_path, io::follow_symlinks, ec};
             if (ec) { fail(ctx, "access", child, ec); continue; }
-
-            if (child.is_symlink() && !ctx.keep_links)
-            {
-                child = child.follow_symlinks(ec);
-                if (ec) { fail(ctx, "resolve symlink", child, ec); continue; }
-            }
 
             entry entry{ child, true };
             co_yield entry;
@@ -470,13 +465,6 @@ std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
 
 void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
-    if (source.is_symlink() && !ctx.keep_links)
-    {
-        std::error_code ec;
-        source = source.follow_symlinks(ec);
-        if (ec) { fail(ctx, "resolve symlink", source, ec); return; }
-    }
-
     if (source.is_directory() && !ctx.recursive) {
         skip(ctx, "skipping directory", source);
         return;
@@ -696,7 +684,6 @@ try
         { "-a", "--archive",        "Archive mode (equivalent to -rmotD --unlink=auto)."},
         { "-D",                     "Same as --special --devices."                      },
         {       "--devices",        "Preserve device files."                            },
-        { "-F", "--follow-dest-links", "Dereference destination symlinks."              },
         { "-f", "--unlink", "when", pgm::optval,
                                     "Unlink destination before writing. [when] can be one of:\n"
                                     "'never', 'always' or 'auto'.\n"
@@ -755,24 +742,27 @@ try
 
         for (auto&& path : args["SOURCE"].values())
         {
-            io::file source{path, ec};
+            auto source = ctx.keep_links ? io::file{path, ec} : io::file{path, io::follow_symlinks, ec};
             if (ec) fail(ctx, "access", source, ec);
             else sources.push_back(std::move(source));
         }
 
-        if (args["DESTINATION"])
-        {
-            target = io::file{args["DESTINATION"].value(), ec};
-            if (ec) throw io::exception{"main", target.path(), ec};
-        }
+        auto&& destination_path = args["DESTINATION"];
+        auto&& target_path = args["--target"];
 
-        if (args["--target"])
+        if (target_path)
         {
             // DESTINATION will capture the last positional parameter,
             // but if --target was specified that value belongs in SOURCES
-            if (!target.empty()) sources.push_back(std::move(target));
+            if (destination_path)
+            {
+                auto source = ctx.keep_links ? io::file{destination_path.value(), ec}
+                    : io::file{destination_path.value(), io::follow_symlinks, ec};
+                if (ec) fail(ctx, "access", source, ec);
+                else sources.push_back(std::move(source));
+            }
 
-            target = io::file{args["--target"].value(), io::follow_symlinks, ec};
+            target = io::file{target_path.value(), io::follow_symlinks, ec};
             if (ec) throw io::exception{"main", target.path(), ec};
 
             if (!target.is_directory()) throw io::exception{
@@ -781,11 +771,11 @@ try
         }
         else
         {
-            if (target.empty()) throw pgm::missing_argument{
+            if (!destination_path) throw pgm::missing_argument{
                 "neither DESTINATION nor --target was specified"
             };
 
-            target = target.follow_symlinks(ec);
+            target = io::file{destination_path.value(), io::follow_symlinks, ec};
             if (ec) throw io::exception{"main", target.path(), ec};
         }
 
@@ -802,7 +792,6 @@ try
         }
         if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
         if (args["--devices"]) ctx.keep_devices = true;
-        if (args["--follow-dest-links"]) ctx.follow_dest_links = true;
         if (args["--group"]) ctx.keep_group = true;
         if (args["--interactive"]) ctx.interactive = true;
         if (args["--mode"]) ctx.keep_mode = true;

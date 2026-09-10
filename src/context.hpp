@@ -32,7 +32,6 @@ struct context
     bool can_chown = false;
     io::user_id uid = -1;
 
-    bool follow_dest_links = false;
     bool interactive = false;
 
     bool keep_mode = false;
