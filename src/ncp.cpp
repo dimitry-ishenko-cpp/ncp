@@ -742,42 +742,6 @@ try
         ctx.uid = io::effective_user_id();
         ctx.can_chown = ctx.uid ? io::have_cap_chown() : true;
 
-        std::error_code ec;
-        std::vector<io::file> sources;
-        io::file target;
-
-        for (auto&& path : args["SOURCE"].values())
-        {
-            auto source = ctx.keep_links ? io::file{path, ec} : io::file{path, io::follow_symlinks, ec};
-            if (ec) fail(ctx, "access", source, ec);
-            else sources.push_back(std::move(source));
-        }
-
-        auto&& destination_path = args["DESTINATION"];
-        auto&& target_path = args["--target"];
-
-        if (target_path)
-        {
-            // DESTINATION will capture the last positional parameter,
-            // but if --target was specified that value belongs in SOURCES
-            if (destination_path)
-            {
-                auto source = ctx.keep_links ? io::file{destination_path.value(), ec}
-                    : io::file{destination_path.value(), io::follow_symlinks, ec};
-                if (ec) fail(ctx, "access", source, ec);
-                else sources.push_back(std::move(source));
-            }
-
-            target = io::file{target_path.value(), io::follow_symlinks, ec};
-            if (ec) throw io::exception{"main", target.path(), ec};
-        }
-        else if (destination_path)
-        {
-            target = io::file{destination_path.value(), io::follow_symlinks, ec};
-            if (ec) throw io::exception{"main", target.path(), ec};
-        }
-        else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
-
         if (args["--archive"])
         {
             ctx.keep_devices = true;
@@ -842,6 +806,42 @@ try
             else if (when == "size") ctx.update_ = update::size;
             else throw pgm::invalid_argument{ "bad --update value '" + when + "'" };
         }
+
+        std::error_code ec;
+        std::vector<io::file> sources;
+        io::file target;
+
+        for (auto&& path : args["SOURCE"].values())
+        {
+            auto source = ctx.keep_links ? io::file{path, ec} : io::file{path, io::follow_symlinks, ec};
+            if (ec) fail(ctx, "access", source, ec);
+            else sources.push_back(std::move(source));
+        }
+
+        auto&& destination_path = args["DESTINATION"];
+        auto&& target_path = args["--target"];
+
+        if (target_path)
+        {
+            // DESTINATION will capture the last positional parameter,
+            // but if --target was specified that value belongs in SOURCES
+            if (destination_path)
+            {
+                auto source = ctx.keep_links ? io::file{destination_path.value(), ec}
+                    : io::file{destination_path.value(), io::follow_symlinks, ec};
+                if (ec) fail(ctx, "access", source, ec);
+                else sources.push_back(std::move(source));
+            }
+
+            target = io::file{target_path.value(), io::follow_symlinks, ec};
+            if (ec) throw io::exception{"main", target.path(), ec};
+        }
+        else if (destination_path)
+        {
+            target = io::file{destination_path.value(), io::follow_symlinks, ec};
+            if (ec) throw io::exception{"main", target.path(), ec};
+        }
+        else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
         ////////////////////
         asio::thread_pool pool{ ctx.jobs };
