@@ -488,8 +488,8 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
-            auto target_ = target;
-            if (source.path().has_filename())
+            io::file target_;
+            if (source.path().has_filename()) // rsync-style behavior
             {
                 std::error_code ec;
                 auto name = source.path().filename();
@@ -498,18 +498,21 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
                     : io::file{target, name, io::follow_symlinks, ec};
                 if (ec) { fail(ctx, "access", target_, ec); continue; }
             }
+            else target_ = target;
+
             copy_source(ctx, pool, std::move(source), std::move(target_));
         }
     }
     else if (sources.size() == 1)
     {
-        if (sources.front().is_symlink()) // --keep-links
+        auto& source = sources.front();
+        if (source.is_symlink()) // --keep-links
         {
             std::error_code ec;
             target = io::file{target.path(), ec};
             if (ec) { fail(ctx, "access", target, ec); return; }
         }
-        copy_source(ctx, pool, std::move(sources.front()), std::move(target));
+        copy_source(ctx, pool, std::move(source), std::move(target));
     }
     else if (sources.size() > 1)
         fail(ctx, "copy", target, std::make_error_code(std::errc::not_a_directory));
