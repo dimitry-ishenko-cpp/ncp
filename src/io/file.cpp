@@ -218,23 +218,27 @@ file create_socket(const file& parent, const path& name, std::error_code& ec) no
 std::generator<std::expected<path, std::error_code>> directory_iterator(const file& dir)
 {
     auto dir_close = [](DIR* p) { ::closedir(p); };
-    std::unique_ptr<DIR, decltype (dir_close)> dir_ptr;
+    std::unique_ptr<DIR, decltype (dir_close)> dp;
     
     desc fd{ ::open(proxy_path(dir.fd()).c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC) };
-    if (fd) dir_ptr.reset( ::fdopendir(fd.get()) );
+    if (fd) dp.reset( ::fdopendir(fd.get()) );
 
-    if (dir_ptr) for (;;)
+    if (dp)
     {
-        errno = 0;
-        if (auto e = ::readdir(dir_ptr.get()))
+        fd.release(); // fdopendir owns it now
+        for (;;)
         {
-            std::string_view name = e->d_name;
-            if (name != "." && name != "..") co_yield name;
-        }
-        else
-        {
-            if (errno) co_yield std::unexpected(error_code(errno));
-            break;
+            errno = 0;
+            if (auto e = ::readdir(dp.get()))
+            {
+                std::string_view name = e->d_name;
+                if (name != "." && name != "..") co_yield name;
+            }
+            else
+            {
+                if (errno) co_yield std::unexpected(error_code(errno));
+                break;
+            }
         }
     }
     else co_yield std::unexpected(error_code(errno));
