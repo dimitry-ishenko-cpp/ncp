@@ -400,13 +400,6 @@ auto copy_special(context& ctx, io::file source, io::file target)
 
 auto copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
 {
-    if (target.is_symlink() && !source.is_symlink())
-    {
-        std::error_code ec;
-        target = target.follow_symlinks(ec);
-        if (ec) return fail(ctx, "resolve symlink", target, ec);
-    }
-
     if (target == source)
         return skip(ctx, "skipping same file", source, target);
 
@@ -478,7 +471,9 @@ void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::fil
 
             std::error_code ec;
             auto name = source_child.path().lexically_relative(source.path());
-            io::file target_child{ target.path() / name, ec };
+
+            auto target_child = source_child.is_symlink() ? io::file{ target.path() / name, ec }
+                : io::file{ target.path() / name, io::follow_symlinks, ec };
 
             status = ec ? fail(ctx, "resolve path", target_child, ec)
                 : copy_entry(ctx, pool, std::move(source_child), std::move(target_child), true);
@@ -498,15 +493,27 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
             if (source.path().has_filename())
             {
                 std::error_code ec;
-                real_target = io::file{target.path() / source.path().filename(), ec};
+                auto child_path = target.path() / source.path().filename();
+                real_target = source.is_symlink() ? io::file{child_path, ec}
+                    : io::file{child_path, io::follow_symlinks, ec};
                 if (ec) { fail(ctx, "resolve path", real_target, ec); continue; }
             }
             copy_source(ctx, pool, std::move(source), std::move(real_target));
         }
     }
     else if (sources.size() == 1)
+    {
+        if (!target.is_directory() && sources.front().is_symlink())
+        {
+            std::error_code ec;
+            target = io::file{target.path(), ec};
+        }
         copy_source(ctx, pool, std::move(sources.front()), std::move(target));
-    else fail(ctx, "copy", target, std::make_error_code(std::errc::not_a_directory));
+    }
+    else if (sources.size() > 1)
+    {
+        fail(ctx, "copy", target, std::make_error_code(std::errc::not_a_directory));
+    }
 }
 
 void process_dirs(context& ctx)
@@ -764,20 +771,13 @@ try
 
             target = io::file{target_path.value(), io::follow_symlinks, ec};
             if (ec) throw io::exception{"main", target.path(), ec};
-
-            if (!target.is_directory()) throw io::exception{
-                "main", target.path(), std::make_error_code(std::errc::not_a_directory)
-            };
         }
-        else
+        else if (destination_path)
         {
-            if (!destination_path) throw pgm::missing_argument{
-                "neither DESTINATION nor --target was specified"
-            };
-
             target = io::file{destination_path.value(), io::follow_symlinks, ec};
             if (ec) throw io::exception{"main", target.path(), ec};
         }
+        else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
         if (args["--archive"])
         {
@@ -893,11 +893,11 @@ try
 }
 catch (const io::exception& e)
 {
-    std::print("{}: '{}'\n", e.code().message(), e.path1().string());
+    std::print("E: {}: '{}'\n", e.code().message(), e.path1().string());
     return invalid_argument;
 }
 catch (const std::exception& e)
 {
-    std::print("{}\n", e.what());
+    std::print("E: {}\n", e.what());
     return invalid_argument;
 };
