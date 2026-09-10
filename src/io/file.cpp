@@ -11,11 +11,16 @@
 #include <chrono>
 #include <cstdint>
 #include <format>
+#include <memory>
+#include <string>
+#include <string_view>
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,6 +213,31 @@ file create_fifo(const file& parent, const path& name, std::error_code& ec) noex
 }
 file create_socket(const file& parent, const path& name, std::error_code& ec) noexcept {
     return create_node(parent, name, S_IFSOCK, 0, ec);
+}
+
+std::generator<std::expected<path, std::error_code>> directory_iterator(const file& dir)
+{
+    auto dir_close = [](DIR* p) { ::closedir(p); };
+    std::unique_ptr<DIR, decltype (dir_close)> dir_ptr;
+    
+    desc fd{ ::open(proxy_path(dir.fd()).c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC) };
+    if (fd) dir_ptr.reset( ::fdopendir(fd.get()) );
+
+    if (dir_ptr) for (;;)
+    {
+        errno = 0;
+        if (auto e = ::readdir(dir_ptr.get()))
+        {
+            std::string_view name = e->d_name;
+            if (name != "." && name != "..") co_yield name;
+        }
+        else
+        {
+            if (errno) co_yield std::unexpected(error_code(errno));
+            break;
+        }
+    }
+    else co_yield std::unexpected(error_code(errno));
 }
 
 void remove(const file& parent, const path& name, std::error_code& ec) noexcept
