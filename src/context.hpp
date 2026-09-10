@@ -35,9 +35,9 @@ struct context
     bool follow_dest_links = false;
     bool interactive = false;
 
-    bool keep_group = false, keep_user = false;
     bool keep_mode = false;
     bool keep_time = false;
+    bool keep_user = false, keep_group = false;
 
     bool keep_devices = false;
     bool keep_links = false;
