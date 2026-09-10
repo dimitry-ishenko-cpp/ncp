@@ -92,7 +92,6 @@ public:
     bool is_special     () const noexcept { return is_fifo() || is_socket(); }
 
     ////////////////////
-    file follow_symlinks(std::error_code&) const;
     io::path get_target_path(std::error_code&) const;
 
     friend bool operator==(const file& lhs, const file& rhs) noexcept {

@@ -124,22 +124,6 @@ path file::get_target_path(std::error_code& ec) const
     }
 }
 
-file file::follow_symlinks(std::error_code& ec) const
-{
-    file target;
-    if (!is_symlink())
-    {
-        target = *this;
-        ec.clear();
-    }
-    else
-    {
-        target = file{proxy_path(fd_), io::follow_symlinks, ec};
-        target.path_ = path_;
-    }
-    return target;
-}
-
 void file::mode(io::mode mode, std::error_code& ec) noexcept
 {
     if (is_symlink()) { ec.clear(); return; }
