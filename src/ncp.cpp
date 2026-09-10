@@ -488,31 +488,31 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> s
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
-            auto real_target = target;
+            auto target_ = target;
             if (source.path().has_filename())
             {
                 std::error_code ec;
-                auto child_path = target.path() / source.path().filename();
-                real_target = source.is_symlink() ? io::file{child_path, ec}
-                    : io::file{child_path, io::follow_symlinks, ec};
-                if (ec) { fail(ctx, "resolve path", real_target, ec); continue; }
+                auto name = source.path().filename();
+
+                target_ = source.is_symlink() ? io::file{target, name, ec}
+                    : io::file{target, name, io::follow_symlinks, ec};
+                if (ec) { fail(ctx, "access", target_, ec); continue; }
             }
-            copy_source(ctx, pool, std::move(source), std::move(real_target));
+            copy_source(ctx, pool, std::move(source), std::move(target_));
         }
     }
     else if (sources.size() == 1)
     {
-        if (!target.is_directory() && sources.front().is_symlink())
+        if (sources.front().is_symlink()) // --keep-links
         {
             std::error_code ec;
             target = io::file{target.path(), ec};
+            if (ec) { fail(ctx, "access", target, ec); return; }
         }
         copy_source(ctx, pool, std::move(sources.front()), std::move(target));
     }
     else if (sources.size() > 1)
-    {
         fail(ctx, "copy", target, std::make_error_code(std::errc::not_a_directory));
-    }
 }
 
 void process_dirs(context& ctx)
