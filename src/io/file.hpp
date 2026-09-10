@@ -96,7 +96,7 @@ public:
     io::path get_target_path(std::error_code&) const;
 
     friend bool operator==(const file& lhs, const file& rhs) noexcept {
-        return lhs.device() == rhs.device() && lhs.index_node() == rhs.index_node();
+        return lhs && rhs && lhs.device() == rhs.device() && lhs.index_node() == rhs.index_node();
     }
 
     ////////////////////
