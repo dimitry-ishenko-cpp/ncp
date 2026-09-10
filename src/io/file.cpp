@@ -170,49 +170,40 @@ void file::owner(io::user_id uid, io::group_id gid, std::error_code& ec) noexcep
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-file create_directory(const file& parent, const path& name, std::error_code& ec) noexcept
+void create_directory(const file& parent, const path& name, std::error_code& ec) noexcept
 {
-    file dir;
-    if (0 == ::mkdirat(fd_or_cwd(parent), name.c_str(), 0777))
-        dir = file{parent, name, ec};
+    if (0 == ::mkdirat(fd_or_cwd(parent), name.c_str(), 0777)) ec.clear();
     else ec = error_code(errno);
-    return dir;
 }
 
-file create_symlink(const file& parent, const path& name, const path& link_target, std::error_code& ec) noexcept
+void create_symlink(const file& parent, const path& name, const path& link_target, std::error_code& ec) noexcept
 {
-    file link;
-    if (0 == ::symlinkat(link_target.c_str(), fd_or_cwd(parent), name.c_str()))
-        link = file{parent, name, ec};
+    if (0 == ::symlinkat(link_target.c_str(), fd_or_cwd(parent), name.c_str())) ec.clear();
     else ec = error_code(errno);
-    return link;
 }
 
 namespace
 {
 
-file create_node(const file& parent, const path& name, mode_t type, device rdev, std::error_code& ec) noexcept
+void create_node(const file& parent, const path& name, mode_t type, device rdev, std::error_code& ec) noexcept
 {
-    file node;
-    if (0 == ::mknodat(fd_or_cwd(parent), name.c_str(), type | 0666, rdev))
-        node = file{parent, name, ec};
+    if (0 == ::mknodat(fd_or_cwd(parent), name.c_str(), type | 0666, rdev)) ec.clear();
     else ec = error_code(errno);
-    return node;
 }
 
 }
 
-file create_block_device(const file& parent, const path& name, device rdev, std::error_code& ec) noexcept {
-    return create_node(parent, name, S_IFBLK, rdev, ec);
+void create_block_device(const file& parent, const path& name, device rdev, std::error_code& ec) noexcept {
+    create_node(parent, name, S_IFBLK, rdev, ec);
 }
-file create_char_device(const file& parent, const path& name, device rdev, std::error_code& ec) noexcept {
-    return create_node(parent, name, S_IFCHR, rdev, ec);
+void create_char_device(const file& parent, const path& name, device rdev, std::error_code& ec) noexcept {
+    create_node(parent, name, S_IFCHR, rdev, ec);
 }
-file create_fifo(const file& parent, const path& name, std::error_code& ec) noexcept {
-    return create_node(parent, name, S_IFIFO, 0, ec);
+void create_fifo(const file& parent, const path& name, std::error_code& ec) noexcept {
+    create_node(parent, name, S_IFIFO, 0, ec);
 }
-file create_socket(const file& parent, const path& name, std::error_code& ec) noexcept {
-    return create_node(parent, name, S_IFSOCK, 0, ec);
+void create_socket(const file& parent, const path& name, std::error_code& ec) noexcept {
+    create_node(parent, name, S_IFSOCK, 0, ec);
 }
 
 std::generator<std::expected<path, std::error_code>> directory_iterator(const file& dir)
