@@ -7,33 +7,43 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "misc.hpp"
 
-#include <cerrno>
-
+#include <sys/capability.h>
+#include <sys/ioctl.h>
 #include <sys/resource.h>
+#include <unistd.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
 
-namespace
+user_id effective_user_id() noexcept { return ::geteuid(); }
+
+bool have_cap_chown() noexcept
 {
-
-inline auto error_code(int val) noexcept {
-    return std::error_code{val, std::generic_category()};
+    bool have_caps = false;
+    if (auto caps = ::cap_get_proc())
+    {
+        cap_flag_value_t val;
+        if (0 == ::cap_get_flag(caps, CAP_CHOWN, CAP_EFFECTIVE, &val)) have_caps = (val == CAP_SET);
+        ::cap_free(caps);
+    }
+    return have_caps;
 }
 
-}
-
-void raise_open_file_limit(std::error_code& ec) noexcept
+void raise_open_file_limit() noexcept
 {
     struct rlimit rl;
     if (0 == ::getrlimit(RLIMIT_NOFILE, &rl))
     {
         rl.rlim_cur = rl.rlim_max;
-        if (0 == ::setrlimit(RLIMIT_NOFILE, &rl)) ec.clear();
-        else ec = error_code(errno);
+        ::setrlimit(RLIMIT_NOFILE, &rl);
     }
-    else ec = error_code(errno);
+}
+
+int term_width() noexcept
+{
+    struct winsize w;
+    return (0 == ::ioctl(STDOUT_FILENO, TIOCGWINSZ, &w)) ? w.ws_col : 80;
 }
 
 }

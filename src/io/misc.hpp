@@ -7,12 +7,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include <system_error>
+#include "types.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
 
-void raise_open_file_limit(std::error_code&) noexcept;
+user_id effective_user_id() noexcept;
+bool have_cap_chown() noexcept;
+
+void raise_open_file_limit() noexcept;
+
+int term_width() noexcept;
 
 }
