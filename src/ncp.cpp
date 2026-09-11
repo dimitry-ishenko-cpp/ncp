@@ -20,6 +20,7 @@
 #include <future>
 #include <optional>
 #include <print>
+#include <ranges> // std::views::reverse
 #include <string>
 #include <string_view>
 #include <thread>
@@ -29,13 +30,6 @@ using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 enum class status { failed, copied, moved, unchanged, skipped };
-
-struct node
-{
-    const io::file& parent;
-    io::path name;
-    io::file file;
-};
 
 inline void message(context& ctx, auto type, auto msg) {
     ctx.print(retain, "{} {}\n", type, msg);
@@ -79,7 +73,6 @@ void verbose(context& ctx, auto&&... args) {
     if (ctx.verbose) message(ctx, "V:", std::forward<decltype (args)>(args)...);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool confirm(context& ctx, std::string_view action, const io::file& target)
 {
     if (ctx.copy_all) return true;
@@ -107,6 +100,7 @@ bool confirm(context& ctx, std::string_view action, const io::file& target)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 enum attr_option { include_all, exclude_mode, exclude_time };
 auto get_attr(context& ctx, const io::file& source, attr_option option)
 {
@@ -132,6 +126,13 @@ auto get_attr(context& ctx, const io::file& source, attr_option option)
 bool is_attr_error(const std::error_code& ec) {
     return ec == std::errc::operation_not_permitted || ec == std::errc::not_supported;
 }
+
+struct node
+{
+    const io::file& parent;
+    io::path name;
+    io::file file;
+};
 
 auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
