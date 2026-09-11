@@ -7,12 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "file.hpp"
+#include "io/types.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <cstddef> // std::size_t
-#include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
 enum class unlink { never, always, auto_ };
@@ -57,18 +56,4 @@ struct context
     std::chrono::steady_clock::time_point last_time = start_time;
     long last_bytes = 0;
     double speed = 0;
-
-    ////////////////////
-    void add_dir_attr(io::file file, io::attrib attr) {
-        dir_attrs_.emplace_back(std::move(file), std::move(attr));
-    }
-    auto& dir_attrs() const noexcept { return dir_attrs_; }
-
-    void add_rmdir(io::file file) { rmdirs_.push_back(std::move(file)); }
-    auto& rmdirs() const noexcept { return rmdirs_; }
-
-private:
-    ////////////////////
-    std::vector< std::tuple<io::file, io::attrib> > dir_attrs_;
-    std::vector< io::file > rmdirs_;
 };

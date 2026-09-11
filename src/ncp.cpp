@@ -11,6 +11,8 @@
 #include "message.hpp"
 #include "pgm/args.hpp"
 
+#include "file.hpp"
+
 #include <array>
 #include <asio.hpp>
 #include <charconv> // std::from_chars
@@ -30,6 +32,12 @@
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
+struct dir_attr_entry { io::file source, target; };
+std::vector<dir_attr_entry> dir_attrs;
+
+struct rmdir_entry { io::file parent; io::path name; };
+std::vector<rmdir_entry> rmdirs;
+
 enum class status { failed, copied, moved, unchanged, skipped };
 
 void attr_fail(context& ctx, auto&&... args)
@@ -256,51 +264,62 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
     return status::copied;
 }
 
-auto copy_directory(context& ctx, io::file source, io::file target)
+auto copy_directory(context& ctx, node source, node target)
 {
-    bool need_create = !target || !target.is_directory();
-    if (!need_create && ctx.update_ == update::none) return status::unchanged;
+    std::error_code ec;
+    bool create = false;
+
+    if (target.file)
+    {
+        if (!target.file.is_directory())
+        {
+            if (ctx.unlink_ == unlink::never) return fail(ctx, "exists", target.file);
+            if (ctx.interactive && !confirm(ctx, "replace", target.file)) return status::skipped;
+
+            io::remove(target.parent, target.name, ec);
+            if (ec) return fail(ctx, "remove", target.file, ec);
+            
+            create = true;
+        }
+        else if (ctx.update_ == update::none) return status::unchanged;
+    }
+    else create = true;
 
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
 
-    std::error_code ec;
-    if (target && need_create)
+    if (create)
     {
-        if (ctx.unlink_ == unlink::never)
-            return fail(ctx, "exists", target);
-
-        if (ctx.interactive && !confirm(ctx, "replace", target))
-            return status::skipped;
-
-        io::remove(target.path(), ec);
-        if (ec) return fail(ctx, "remove", target, ec);
-    }
-
-    if (ctx.move)
-    {
-        io::rename(source.path(), target.path(), ec);
-        if (!ec)
+        if (ctx.move)
         {
-            ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-            verbose(ctx, "move", source, target);
-            return status::moved;
+            io::rename(source.parent, source.name, target.parent, target.name, ec);
+            if (!ec)
+            {
+                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+                verbose(ctx, "move", source.file, target.file);
+                return status::moved;
+            }
         }
+
+        io::create_directory(target.parent, target.name, ec);
+        if (ec) return fail(ctx, "create dir", target.file, ec);
+        verbose(ctx, "create dir", target.file);
     }
 
-    if (need_create)
+    if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
     {
-        io::create_directory(target.path(), ec);
-        if (ec) return fail(ctx, "create dir", target, ec);
-        verbose(ctx, "create dir", target);
-    }
+        if (create)
+        {
+            target.file = io::file{target.parent, target.name, ec};
+            if (ec) return fail(ctx, "access", target.file, ec);
+        }
 
-    if (auto attr = get_attr(ctx, source, include_all))
-        ctx.add_dir_attr(std::move(target), attr);
+        dir_attrs.emplace_back(std::move(source.file), std::move(target.file));
+    }
     else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
-    if (ctx.move) ctx.add_rmdir(std::move(source));
+    if (ctx.move) rmdirs.emplace_back(source.parent, std::move(source.name));
 
-    return status::copied;
+    return create ? status::copied : status::unchanged;
 }
 
 template <typename MatchFn, typename CreateFn>
@@ -423,7 +442,7 @@ auto copy_entry(context& ctx, asio::thread_pool& pool, node source, node target,
             return copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::directory:
-            return copy_directory(ctx, std::move(source.file), std::move(target.file));
+            return copy_directory(ctx, std::move(source), std::move(target));
 
         case io::file_type::symlink:
             return copy_symlink(ctx, std::move(source.file), std::move(target.file));
@@ -542,23 +561,23 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<node> sourc
 void process_dirs(context& ctx)
 {
     std::error_code ec;
-    for (auto&& [dir, attr] : std::views::reverse(ctx.dir_attrs()))
+    for (auto&& [source, target] : std::views::reverse(dir_attrs))
     {
-        io::modify(dir.path(), attr, ec);
+        apply_attrs(ctx, source, target, ec);
         if (ec)
         {
-            if (is_attr_error(ec)) attr_fail(ctx, "attrs", dir, ec);
-            else { fail(ctx, "attrs", dir, ec); continue; }
+            if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
+            else { fail(ctx, "attrs", target, ec); continue; }
         }
-        else verbose(ctx, "attrs", dir);
+        else verbose(ctx, "attrs", target);
 
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     }
 
-    for (auto&& dir : std::views::reverse(ctx.rmdirs()))
+    for (auto&& [parent, name] : std::views::reverse(rmdirs))
     {
-        io::remove_directory(dir.path(), ec);
-        if (ec) fail(ctx, "remove dir", dir, ec);
+        io::remove_directory(parent, name, ec);
+        if (ec) fail(ctx, "remove dir", parent.path() / name, ec);
     }
 }
 
