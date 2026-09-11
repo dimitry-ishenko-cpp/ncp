@@ -32,10 +32,6 @@ using namespace std::chrono_literals;
 ////////////////////////////////////////////////////////////////////////////////
 enum class status { failed, copied, moved, unchanged, skipped };
 
-inline auto good(status status) {
-    return status == status::copied || status == status::unchanged;
-}
-
 inline void message(context& ctx, auto type, auto msg) {
     ctx.print(retain, "{} {}\n", type, msg);
 }
@@ -434,62 +430,81 @@ auto copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-struct entry
+struct walk_child
 {
-    const io::file& dir;
-    io::file child;
-    bool descend;
+    io::file source, target;
+    enum status status;
 };
 
-std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
+std::generator<walk_child&> walk_tree(context& ctx, const io::file& source, const io::file& target)
 {
-    for (auto&& name : io::directory_iterator(dir))
+    for (auto&& name : io::directory_iterator(source))
         if (name)
         {
             std::error_code ec;
-            auto child = ctx.keep_links ? io::file{dir, name.value(), ec}
-                : io::file{dir, name.value(), io::follow_symlinks, ec};
-            if (ec) { fail(ctx, "access", child, ec); continue; }
 
-            if (child.is_directory())
+            auto child_source = ctx.keep_links ? io::file{source, name.value(), ec}
+                : io::file{source, name.value(), io::follow_symlinks, ec};
+            if (ec) { fail(ctx, "access", child_source, ec); continue; }
+
+            auto child_target = child_source.is_symlink() ? io::file{target, name.value(), ec}
+                : io::file{target, name.value(), io::follow_symlinks, ec};
+            if (ec) { fail(ctx, "access", child_target, ec); continue; }
+
+            if (child_source.is_directory())
             {
-                entry entry{ dir, child, true }; // copy child, as we might need it below
-                co_yield entry;
+                walk_child child{ child_source, child_target, status::failed }; // copy source and target
+                co_yield child;
 
-                if (entry.descend) co_yield std::ranges::elements_of( walk_tree(ctx, child) );
+                switch (child.status)
+                {
+                    case status::copied: // reread child_target, as it's changed
+                        child_target = child_source.is_symlink() ? io::file{target, name.value(), ec}
+                            : io::file{target, name.value(), io::follow_symlinks, ec};
+                        if (ec) { fail(ctx, "access", child_target, ec); continue; }
+
+                    case status::unchanged:
+                        co_yield std::ranges::elements_of( walk_tree(ctx, child_source, child_target) );
+
+                    default:;
+                }
             }
             else
             {
-                entry entry{ dir, std::move(child), false };
-                co_yield entry;
+                walk_child child{ std::move(child_source), std::move(child_target), status::failed };
+                co_yield child;
             }
         }
-        else fail(ctx, "read dir", dir, name.error());
+        else fail(ctx, "read dir", source, name.error());
 }
 
 void copy_source(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
 {
-    if (source.is_directory() && !ctx.recursive) {
-        skip(ctx, "skipping directory", source);
-        return;
-    }
+    if (source.is_directory())
+    {
+        if (!ctx.recursive) { skip(ctx, "skipping dir", source); return; }
 
-    auto status = copy_entry(ctx, pool, std::as_const(source), std::as_const(target), false);
-    if (good(status) && source.is_directory())
-        for (auto&& [ source_child, descend ] : walk_tree(ctx, source))
+        std::error_code ec;
+        auto status = copy_entry(ctx, pool, source, target, false); // copy source and target
+
+        switch (status)
         {
-            if (ctx.quit.load(std::memory_order_relaxed)) break;
+            case status::copied: // reread target, as it's changed
+                target = source.is_symlink() ? io::file{target.path(), ec}
+                    : io::file{target.path(), io::follow_symlinks, ec};
+                if (ec) { fail(ctx, "access", target, ec); return; }
 
-            std::error_code ec;
-            auto name = source_child.path().lexically_relative(source.path());
+            case status::unchanged:
+                for (auto& child : walk_tree(ctx, source, target))
+                {
+                    if (ctx.quit.load(std::memory_order_relaxed)) break;
+                    child.status = copy_entry(ctx, pool, std::move(child.source), std::move(child.target), true);
+                }
 
-            auto target_child = source_child.is_symlink() ? io::file{ target.path() / name, ec }
-                : io::file{ target.path() / name, io::follow_symlinks, ec };
-
-            status = ec ? fail(ctx, "resolve path", target_child, ec)
-                : copy_entry(ctx, pool, std::move(source_child), std::move(target_child), true);
-            descend = good(status);
+            default:;
         }
+    }
+    else copy_entry(ctx, pool, std::move(source), std::move(target), false);
 }
 
 void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> sources, io::file target)
