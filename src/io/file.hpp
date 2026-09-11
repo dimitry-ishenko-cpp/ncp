@@ -111,35 +111,35 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 void create_directory(const file& parent, const path& name, std::error_code&) noexcept;
-inline void create_directory(const path& name, std::error_code& ec) noexcept { io::create_directory({}, name, ec); }
+inline void create_directory(const path& path, std::error_code& ec) noexcept { io::create_directory({}, path, ec); }
 
 void create_symlink(const file& parent, const path& name, const path& link_target, std::error_code&) noexcept;
-inline void create_symlink(const path& name, const path& link_target, std::error_code& ec) noexcept {
-    io::create_symlink({}, name, link_target, ec);
+inline void create_symlink(const io::path& path, const io::path& link_target, std::error_code& ec) noexcept {
+    io::create_symlink({}, path, link_target, ec);
 }
 
 void create_block_device(const file& parent, const path& name, device, std::error_code&) noexcept;
-inline void create_block_device(const path& name, device rdev, std::error_code& ec) noexcept {
-    io::create_block_device({}, name, rdev, ec);
+inline void create_block_device(const path& path, device rdev, std::error_code& ec) noexcept {
+    io::create_block_device({}, path, rdev, ec);
 }
 
 void create_char_device(const file& parent, const path& name, device, std::error_code&) noexcept;
-inline void create_char_device(const path& name, device rdev, std::error_code& ec) noexcept {
-    io::create_char_device({}, name, rdev, ec);
+inline void create_char_device(const path& path, device rdev, std::error_code& ec) noexcept {
+    io::create_char_device({}, path, rdev, ec);
 }
 
 void create_fifo(const file& parent, const path& name, std::error_code&) noexcept;
-inline void create_fifo(const path& name, std::error_code& ec) noexcept { io::create_fifo({}, name, ec); }
+inline void create_fifo(const path& path, std::error_code& ec) noexcept { io::create_fifo({}, path, ec); }
 
 void create_socket(const file& parent, const path& name, std::error_code&) noexcept;
-inline void create_socket(const path& name, std::error_code& ec) noexcept { io::create_socket({}, name, ec); }
+inline void create_socket(const path& path, std::error_code& ec) noexcept { io::create_socket({}, path, ec); }
 
 std::generator<std::expected<path, std::error_code>> directory_iterator(const file&);
 
 void remove(const file& parent, const path& name, std::error_code&) noexcept;
-inline void remove(const path& name, std::error_code& ec) noexcept { remove({}, name, ec); }
+inline void remove(const path& path, std::error_code& ec) noexcept { remove({}, path, ec); }
 
 void remove_directory(const file& parent, const path& name, std::error_code&) noexcept;
-inline void remove_directory(const path& name, std::error_code& ec) noexcept { remove_directory({}, name, ec); }
+inline void remove_directory(const path& path, std::error_code& ec) noexcept { remove_directory({}, path, ec); }
 
 }
