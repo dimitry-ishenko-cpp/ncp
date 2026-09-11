@@ -8,6 +8,7 @@
 #include "context.hpp"
 #include "io/file.hpp"
 #include "io/misc.hpp"
+#include "message.hpp"
 #include "pgm/args.hpp"
 
 #include <array>
@@ -31,46 +32,31 @@ using namespace std::chrono_literals;
 ////////////////////////////////////////////////////////////////////////////////
 enum class status { failed, copied, moved, unchanged, skipped };
 
-inline void message(context& ctx, auto type, auto msg) {
-    ctx.print(retain, "{} {}\n", type, msg);
-}
-inline void message(context& ctx, auto type, auto msg, const io::file& file) {
-    ctx.print(retain, "{} {} '{}'\n", type, msg, file.path().string());
-}
-inline void message(context& ctx, auto type, auto msg, const io::file& source, const io::file& target) {
-    ctx.print(retain, "{} {} '{}' => '{}'\n", type, msg, source.path().string(), target.path().string());
-}
-inline void message(context& ctx, auto type, auto msg, const io::file& file, std::error_code ec) {
-    ctx.print(retain, "{} {} '{}': {}\n", type, msg, file.path().string(), ec.message());
-}
-inline void message(context& ctx, auto type, auto msg, const io::file& source, const io::file& target, std::error_code ec) {
-    ctx.print(retain, "{} {} '{}' => '{}': {}\n", type, msg, source.path().string(), target.path().string(), ec.message());
-}
-
-void attr_fail(context& ctx, auto&&... args) {
-    if (ctx.verbose) message(ctx, "E:", std::forward<decltype (args)>(args)...);
+void attr_fail(context& ctx, auto&&... args)
+{
+    if (ctx.verbose) message("E:", std::forward<decltype (args)>(args)...);
     ctx.attr_failed.store(true, std::memory_order_relaxed);
 }
 
 auto fail(context& ctx, auto&&... args)
 {
-    message(ctx, "E:", std::forward<decltype (args)>(args)...);
+    message("E:", std::forward<decltype (args)>(args)...);
     ctx.failed.store(true, std::memory_order_relaxed);
     return status::failed;
 }
 
 void info(context& ctx, auto&&... args) {
-    message(ctx, "I:", std::forward<decltype (args)>(args)...);
+    message("I:", std::forward<decltype (args)>(args)...);
 }
 
 auto skip(context& ctx, auto&&... args)
 {
-    message(ctx, "I:", std::forward<decltype (args)>(args)...);
+    message("I:", std::forward<decltype (args)>(args)...);
     return status::skipped;
 }
 
 void verbose(context& ctx, auto&&... args) {
-    if (ctx.verbose) message(ctx, "V:", std::forward<decltype (args)>(args)...);
+    if (ctx.verbose) message("V:", std::forward<decltype (args)>(args)...);
 }
 
 bool confirm(context& ctx, std::string_view action, const io::file& target)
@@ -78,9 +64,9 @@ bool confirm(context& ctx, std::string_view action, const io::file& target)
     if (ctx.copy_all) return true;
     if (ctx.skip_all) return false;
 
-    for (auto lock = ctx.get_print_lock();;)
+    for (auto lock = get_print_lock();;)
     {
-        ctx.print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, target.path().string());
+        print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, target.path().string());
 
         auto c = std::getchar();
         auto reply = c;
@@ -670,7 +656,7 @@ void show_progress(context& ctx, bool final = false)
     }
     else bar.clear();
 
-    ctx.print(replace, "{}{}\n", bar, metric);
+    print(replace, "{}{}\n", bar, metric);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

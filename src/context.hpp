@@ -12,18 +12,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef> // std::size_t
-#include <cstdio> // std::fflush
-#include <format>
-#include <mutex>
-#include <print>
-#include <tuple>
 #include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
 enum class unlink { never, always, auto_ };
 enum class update { none, all, older, changed, size, };
-
-enum print_option { retain, replace };
 
 struct context
 {
@@ -74,31 +67,8 @@ struct context
     void add_rmdir(io::file file) { rmdirs_.push_back(std::move(file)); }
     auto& rmdirs() const noexcept { return rmdirs_; }
 
-    ////////////////////
-    [[nodiscard]] auto get_print_lock() { return std::unique_lock{mutex_}; }
-
-    template <typename... Args>
-    void print(print_option option, std::format_string<Args...> fmt, Args&&... args)
-    {
-        std::lock_guard guard{mutex_};
-        print_locked(option, fmt, std::forward<Args>(args)...);
-    }
-
-    template <typename... Args>
-    void print_locked(print_option option, std::format_string<Args...> fmt, Args&&... args)
-    {
-        if (print_ == replace) std::print("\033[{}F\033[K", 1);
-        print_ = option;
-
-        std::print(fmt, std::forward<Args>(args)...);
-        std::fflush(stdout);
-    }
-
 private:
     ////////////////////
-    std::mutex mutex_;
-    print_option print_ = retain;
-
     std::vector< std::tuple<io::file, io::attrib> > dir_attrs_;
     std::vector< io::file > rmdirs_;
 };
