@@ -11,6 +11,7 @@
 #include "types.hpp"
 
 #include <expected>
+#include <functional>
 #include <generator>
 #include <system_error> // std::error_code
 
@@ -110,6 +111,17 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+using progress_callback = std::function<bool(file_size copied)>;
+
+void copy_file(const file& source, const file& target_parent, const path& target_name,
+    std::error_code&, const progress_callback& = {});
+inline void copy_file(const file& source, const path& target, std::error_code& ec, const progress_callback& cb = {}) {
+    io::copy_file(source, {}, target, ec, cb);
+}
+inline void copy_file(const path& source, const path& target, std::error_code& ec, const progress_callback& cb = {}) {
+    if (io::file file{source, ec}; !ec) io::copy_file(file, {}, target, ec, cb);
+}
+
 void create_directory(const file& parent, const path& name, std::error_code&) noexcept;
 inline void create_directory(const path& path, std::error_code& ec) noexcept { io::create_directory({}, path, ec); }
 

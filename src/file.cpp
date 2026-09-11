@@ -10,8 +10,6 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
-#include <memory>
-#include <string_view>
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -29,12 +27,6 @@ namespace io
 namespace
 {
 
-struct auto_close
-{
-    int fd = -1;
-    ~auto_close() { if (fd != -1) ::close(fd); }
-};
-
 inline auto make_error_code(int val) noexcept { return std::error_code{val, std::generic_category()}; }
 
 inline auto mtime(time time) noexcept
@@ -49,107 +41,6 @@ inline auto mtime(time time) noexcept
 
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void copy_file(const file& source, const file& target, const attrib& attr, std::error_code& ec, const progress_callback& cb)
-{
-    constexpr file_size chunk_size = 4 * 1024 * 1024;
-
-    auto tick = [&](file_size copied) {
-        if (!cb || cb(copied)) return true;
-        ec = std::make_error_code(std::errc::operation_canceled);
-        return false;
-    };
-
-    auto_close in { ::open(source.path().c_str(), O_RDONLY | O_CLOEXEC) };
-    if (in.fd  < 0) { ec = make_error_code(errno); return; }
-
-    auto_close out{ ::open(target.path().c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
-    if (out.fd < 0) { ec = make_error_code(errno); return; }
-
-    bool copying = true;
-
-    // try copy_file_range
-    while (copying)
-    {
-        auto copied = ::copy_file_range(in.fd, nullptr, out.fd, nullptr, chunk_size, 0);
-        if (copied < 0)
-        {
-            if (errno == EINTR) continue;
-            // not supported
-            if (errno == EINVAL || errno == ENOSYS || errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
-
-            ec = make_error_code(errno);
-            return;
-        }
-        else if (copied > 0) { if (!tick(copied)) return; }
-        else copying = false;
-    }
-
-    // try sendfile
-    while (copying)
-    {
-        auto copied = ::sendfile(out.fd, in.fd, nullptr, chunk_size);
-        if (copied < 0)
-        {
-            if (errno == EINTR) continue;
-            // not supported
-            if (errno == EINVAL || errno == ENOSYS) break;
-
-            ec = make_error_code(errno);
-            return;
-        }
-        else if (copied > 0) { if (!tick(copied)) return; }
-        else copying = false;
-    }
-
-    // try read/write
-    if (copying)
-    {
-        auto buf = std::make_unique_for_overwrite<char[]>(chunk_size);
-        do
-        {
-            auto read = ::read(in.fd, buf.get(), chunk_size);
-            if (read < 0)
-            {
-                if (errno == EINTR) continue;
-
-                ec = make_error_code(errno);
-                return;
-            }
-            else if (read > 0)
-            {
-                for (auto p = buf.get(); read; )
-                {
-                    auto wrtn = ::write(out.fd, p, read);
-                    if (wrtn < 0)
-                    {
-                        if (errno == EINTR) continue;
-
-                        ec = make_error_code(errno);
-                        return;
-                    }
-                    else
-                    {
-                        read -= wrtn; p += wrtn;
-                        if (!tick(wrtn)) return;
-                    }
-                }
-            }
-            else copying = false;
-        }
-        while (copying);
-    }
-
-    if (attr.mode && ::fchmod(out.fd, static_cast<::mode_t>(*attr.mode)))
-        ec = make_error_code(errno);
-    else if (attr.time && ::futimens(out.fd, mtime(*attr.time).data()))
-        ec = make_error_code(errno);
-    else if ((attr.uid || attr.gid) && ::fchown(out.fd, attr.uid.value_or(-1), attr.gid.value_or(-1)))
-        ec = make_error_code(errno);
-    else ec.clear();
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void modify(const path& path, const attrib& attr, std::error_code& ec) noexcept
 {
     if (attr.mode && ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode)))

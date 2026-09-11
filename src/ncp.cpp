@@ -175,7 +175,7 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             if (ctx.quit.load(std::memory_order_relaxed)) return;
 
             std::error_code ec;
-            io::copy_file(source, target, ec,
+            io::copy_file(source, target.path(), ec,
                 [&ctx](io::file_size chunk)
                 {
                     ctx.bytes_copied.fetch_add(chunk, std::memory_order_relaxed);

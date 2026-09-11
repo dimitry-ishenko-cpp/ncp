@@ -9,9 +9,6 @@
 
 #include "io/file.hpp"
 
-#include <expected>
-#include <functional>
-#include <generator>
 #include <memory>
 #include <optional>
 #include <system_error>
@@ -32,13 +29,6 @@ struct attrib
 
     explicit operator bool() const noexcept { return mode || time || gid || uid; }
 };
-
-using progress_callback = std::function<bool(file_size copied)>;
-
-void copy_file(const file&, const file&, const attrib&, std::error_code&, const progress_callback& = {});
-inline void copy_file(const file& source, const file& target, std::error_code& ec, const progress_callback& cb = {}) {
-    io::copy_file(source, target, {}, ec, cb);
-}
 
 void modify(const path&, const attrib&, std::error_code&) noexcept;
 
