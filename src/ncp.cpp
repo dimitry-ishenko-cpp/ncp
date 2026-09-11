@@ -434,7 +434,12 @@ auto copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-struct entry { io::file file; bool descend; };
+struct entry
+{
+    const io::file& dir;
+    io::file child;
+    bool descend;
+};
 
 std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
 {
@@ -446,11 +451,18 @@ std::generator<entry&> walk_tree(context& ctx, const io::file& dir)
                 : io::file{dir, name.value(), io::follow_symlinks, ec};
             if (ec) { fail(ctx, "access", child, ec); continue; }
 
-            entry entry{ child, true };
-            co_yield entry;
+            if (child.is_directory())
+            {
+                entry entry{ dir, child, true }; // copy child, as we might need it below
+                co_yield entry;
 
-            if (child.is_directory() && entry.descend)
-                co_yield std::ranges::elements_of( walk_tree(ctx, child) );
+                if (entry.descend) co_yield std::ranges::elements_of( walk_tree(ctx, child) );
+            }
+            else
+            {
+                entry entry{ dir, std::move(child), false };
+                co_yield entry;
+            }
         }
         else fail(ctx, "read dir", dir, name.error());
 }
