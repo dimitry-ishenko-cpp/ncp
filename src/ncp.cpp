@@ -73,14 +73,14 @@ void verbose(context& ctx, auto&&... args) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool confirm(context& ctx, std::string_view action, const io::file& file)
+bool confirm(context& ctx, std::string_view action, const io::file& target)
 {
     if (ctx.copy_all) return true;
     if (ctx.skip_all) return false;
 
     for (auto lock = ctx.get_print_lock();;)
     {
-        ctx.print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, file.path().string());
+        ctx.print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, target.path().string());
 
         auto c = std::getchar();
         auto reply = c;
@@ -393,8 +393,7 @@ auto copy_special(context& ctx, io::file source, io::file target)
 
 auto copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
 {
-    if (target == source)
-        return skip(ctx, "skipping same file", source, target);
+    if (target == source) return skip(ctx, "skipping same file", source, target);
 
     switch (source.type())
     {
