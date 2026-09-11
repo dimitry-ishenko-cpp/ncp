@@ -30,6 +30,13 @@ using namespace std::chrono_literals;
 ////////////////////////////////////////////////////////////////////////////////
 enum class status { failed, copied, moved, unchanged, skipped };
 
+struct node
+{
+    const io::file& parent;
+    io::path name;
+    io::file file;
+};
+
 inline void message(context& ctx, auto type, auto msg) {
     ctx.print(retain, "{} {}\n", type, msg);
 }
@@ -391,75 +398,83 @@ auto copy_special(context& ctx, io::file source, io::file target)
         });
 }
 
-auto copy_entry(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
+auto copy_entry(context& ctx, asio::thread_pool& pool, node source, node target, bool from_walk)
 {
-    if (target == source) return skip(ctx, "skipping same file", source, target);
+    if (target.file == source.file) return skip(ctx, "skipping same file", source.file, target.file);
 
-    switch (source.type())
+    switch (source.file.type())
     {
         case io::file_type::regular:
-            return copy_regular_file(ctx, pool, std::move(source), std::move(target));
+            return copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::directory:
-            return copy_directory(ctx, std::move(source), std::move(target));
+            return copy_directory(ctx, std::move(source.file), std::move(target.file));
 
         case io::file_type::symlink:
-            return copy_symlink(ctx, std::move(source), std::move(target));
+            return copy_symlink(ctx, std::move(source.file), std::move(target.file));
 
         case io::file_type::block:
         case io::file_type::character:
-            if (from_walk) return copy_device(ctx, std::move(source), std::move(target));
-            else return copy_regular_file(ctx, pool, std::move(source), std::move(target));
+            if (from_walk) return copy_device(ctx, std::move(source.file), std::move(target.file));
+            else return copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::fifo:
-            if (from_walk) return copy_special(ctx, std::move(source), std::move(target));
-            else return copy_regular_file(ctx, pool, std::move(source), std::move(target));
+            if (from_walk) return copy_special(ctx, std::move(source.file), std::move(target.file));
+            else return copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::socket:
-            if (from_walk) return copy_special(ctx, std::move(source), std::move(target));
-            else return fail(ctx, "read socket", source);
+            if (from_walk) return copy_special(ctx, std::move(source.file), std::move(target.file));
+            else return fail(ctx, "read socket", source.file);
 
         case io::file_type::not_found:
-            return fail(ctx, "non-extant", source);
+            return fail(ctx, "non-extant", source.file);
 
-        default: return fail(ctx, "unknown file", source);
+        default: return fail(ctx, "unknown file", source.file);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_tree(context& ctx, asio::thread_pool& pool, io::file source, io::file target, bool from_walk)
+void copy_tree(context& ctx, asio::thread_pool& pool, node source, node target, bool from_walk)
 {
-    if (source.is_directory())
+    if (source.file.is_directory())
     {
-        if (!ctx.recursive) { skip(ctx, "skipping dir", source); return; }
+        if (!ctx.recursive) { skip(ctx, "skipping dir", source.file); return; }
 
         std::error_code ec;
-        auto status = copy_entry(ctx, pool, source, target, from_walk); // copy source and target
+        // pass copies of source and target, as we need them below
+        auto status = copy_entry(ctx, pool, source, target, from_walk);
 
         switch (status)
         {
-            case status::copied: // reread target, as it's changed
-                target = source.is_symlink() ? io::file{target.path(), ec}
-                    : io::file{target.path(), io::follow_symlinks, ec};
-                if (ec) { fail(ctx, "access", target, ec); return; }
+            case status::copied:
+                // reread target, as it has changed
+                target.file = source.file.is_symlink()
+                    ? io::file{target.parent, target.name, ec}
+                    : io::file{target.parent, target.name, io::follow_symlinks, ec};
+                if (ec) { fail(ctx, "access", target.file, ec); return; }
+                // fallthrough
 
             case status::unchanged:
-                for (auto&& name : io::directory_iterator(source))
+                for (auto&& name : io::directory_iterator(source.file))
                     if (name)
                     {
                         if (ctx.quit.load(std::memory_order_relaxed)) break;
 
-                        auto child_source = ctx.keep_links ? io::file{source, name.value(), ec}
-                            : io::file{source, name.value(), io::follow_symlinks, ec};
-                        if (ec) { fail(ctx, "access", child_source, ec); continue; }
+                        node child_source{ .parent = source.file, .name = *name };
+                        child_source.file = ctx.keep_links
+                            ? io::file{source.file, *name, ec}
+                            : io::file{source.file, *name, io::follow_symlinks, ec};
+                        if (ec) { fail(ctx, "access", child_source.file, ec); continue; }
 
-                        auto child_target = child_source.is_symlink() ? io::file{target, name.value(), ec}
-                            : io::file{target, name.value(), io::follow_symlinks, ec};
-                        if (ec) { fail(ctx, "access", child_target, ec); continue; }
+                        node child_target{ .parent = target.file, .name = *name };
+                        child_target.file = child_source.file.is_symlink()
+                            ? io::file{target.file, *name, ec}
+                            : io::file{target.file, *name, io::follow_symlinks, ec};
+                        if (ec) { fail(ctx, "access", child_target.file, ec); continue; }
 
                         copy_tree(ctx, pool, std::move(child_source), std::move(child_target), true);
                     }
-                    else fail(ctx, "read dir", source, name.error());
+                    else fail(ctx, "read dir", source.file, name.error());
 
             default:;
         }
@@ -467,42 +482,46 @@ void copy_tree(context& ctx, asio::thread_pool& pool, io::file source, io::file 
     else copy_entry(ctx, pool, std::move(source), std::move(target), from_walk);
 }
 
-void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<io::file> sources, io::file target)
+void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<node> sources, node target)
 {
-    if (target.is_directory())
+    if (target.file.is_directory())
     {
         for (auto&& source : sources)
         {
             if (ctx.quit.load(std::memory_order_relaxed)) break;
 
-            io::file target_;
-            if (source.path().has_filename()) // rsync-style behavior
+            if (source.name.has_filename()) // rsync-style behavior
             {
                 std::error_code ec;
-                auto name = source.path().filename();
+                auto name = source.name.filename();
 
-                target_ = source.is_symlink() ? io::file{target, name, ec}
-                    : io::file{target, name, io::follow_symlinks, ec};
-                if (ec) { fail(ctx, "access", target_, ec); continue; }
+                node new_target{ .parent = target.file, .name = name };
+                new_target.file = source.file.is_symlink()
+                    ? io::file{target.file, name, ec}
+                    : io::file{target.file, name, io::follow_symlinks, ec};
+                if (ec) { fail(ctx, "access", new_target.file, ec); continue; }
+
+                copy_tree(ctx, pool, std::move(source), std::move(new_target), false);
             }
-            else target_ = target;
-
-            copy_tree(ctx, pool, std::move(source), std::move(target_), false);
+            else
+            {
+                // pass copy of the target, we still need it
+                copy_tree(ctx, pool, std::move(source), target, false);
+            }
         }
     }
     else if (sources.size() == 1)
     {
-        auto& source = sources.front();
-        if (source.is_symlink()) // --keep-links
+        if (sources.front().file.is_symlink()) // --keep-links
         {
             std::error_code ec;
-            target = io::file{target.path(), ec};
-            if (ec) { fail(ctx, "access", target, ec); return; }
+            target.file = io::file{target.parent, target.name, ec};
+            if (ec) { fail(ctx, "access", target.file, ec); return; }
         }
-        copy_tree(ctx, pool, std::move(source), std::move(target), false);
+        copy_tree(ctx, pool, std::move(sources.front()), std::move(target), false);
     }
     else if (sources.size() > 1)
-        fail(ctx, "copy", target, std::make_error_code(std::errc::not_a_directory));
+        fail(ctx, "copy", target.file, std::make_error_code(std::errc::not_a_directory));
 }
 
 void process_dirs(context& ctx)
@@ -798,13 +817,18 @@ try
         }
 
         std::error_code ec;
-        std::vector<io::file> sources;
-        io::file target;
+        const io::file cwd;
+
+        std::vector<node> sources;
+        node target{ .parent = cwd };
 
         for (auto&& path : args["SOURCE"].values())
         {
-            auto source = ctx.keep_links ? io::file{path, ec} : io::file{path, io::follow_symlinks, ec};
-            if (ec) fail(ctx, "access", source, ec);
+            node source{ .parent = cwd, .name = path };
+            source.file = ctx.keep_links
+                ? io::file{source.name, ec}
+                : io::file{source.name, io::follow_symlinks, ec};
+            if (ec) fail(ctx, "access", source.file, ec);
             else sources.push_back(std::move(source));
         }
 
@@ -817,19 +841,23 @@ try
             // but if --target was specified that value belongs in SOURCES
             if (destination_path)
             {
-                auto source = ctx.keep_links ? io::file{destination_path.value(), ec}
-                    : io::file{destination_path.value(), io::follow_symlinks, ec};
-                if (ec) fail(ctx, "access", source, ec);
+                node source{ .parent = cwd, .name = destination_path.value() };
+                source.file = ctx.keep_links
+                    ? io::file{source.name, ec}
+                    : io::file{source.name, io::follow_symlinks, ec};
+                if (ec) fail(ctx, "access", source.file, ec);
                 else sources.push_back(std::move(source));
             }
 
-            target = io::file{target_path.value(), io::follow_symlinks, ec};
-            if (ec) throw io::exception{"main", target.path(), ec};
+            target.name = target_path.value();
+            target.file = io::file{target.name, io::follow_symlinks, ec};
+            if (ec) throw io::exception{"main", target.name, ec};
         }
         else if (destination_path)
         {
-            target = io::file{destination_path.value(), io::follow_symlinks, ec};
-            if (ec) throw io::exception{"main", target.path(), ec};
+            target.name = destination_path.value();
+            target.file = io::file{target.name, io::follow_symlinks, ec};
+            if (ec) throw io::exception{"main", target.name, ec};
         }
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
