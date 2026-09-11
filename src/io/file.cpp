@@ -134,8 +134,7 @@ void file::mode(io::mode mode, std::error_code& ec) noexcept
 {
     if (is_symlink()) { ec.clear(); return; }
 
-    desc fd{ ::open(proxy_path(fd_).c_str(), O_RDONLY | O_CLOEXEC) };
-    if (fd && 0 == ::fchmod(fd.get(), static_cast<::mode_t>(mode)))
+    if (0 == ::chmod(proxy_path(fd_).c_str(), static_cast<::mode_t>(mode)))
     {
         mode_ = mode;
         ec.clear();
