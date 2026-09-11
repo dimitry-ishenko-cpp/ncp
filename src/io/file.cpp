@@ -150,7 +150,7 @@ void file::time(io::time time, std::error_code& ec) noexcept
     auto nsec = duration_cast<nanoseconds>(dur - sec);
 
     timespec times[2] = { {0, UTIME_OMIT}, {sec.count(), nsec.count()} };
-    if (0 == ::utimensat(fd_.get(), "", times, AT_EMPTY_PATH))
+    if (0 == ::utimensat(fd_.get(), "", times, AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW))
     {
         time_ = time;
         ec.clear();
@@ -160,7 +160,7 @@ void file::time(io::time time, std::error_code& ec) noexcept
 
 void file::owner(io::user_id uid, io::group_id gid, std::error_code& ec) noexcept
 {
-    if (0 == ::fchownat(fd_.get(), "", uid, gid, AT_EMPTY_PATH))
+    if (0 == ::fchownat(fd_.get(), "", uid, gid, AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW))
     {
         if (uid != none) uid_ = uid;
         if (gid != none) gid_ = gid;
