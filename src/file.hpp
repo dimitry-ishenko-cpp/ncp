@@ -42,8 +42,6 @@ inline void copy_file(const file& source, const file& target, std::error_code& e
 
 void modify(const path&, const attrib&, std::error_code&) noexcept;
 
-void rename(const path&, const path&, std::error_code&) noexcept;
-
 ////////////////////////////////////////////////////////////////////////////////
 struct acl
 {

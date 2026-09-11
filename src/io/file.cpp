@@ -247,4 +247,11 @@ void remove_directory(const file& parent, const path& name, std::error_code& ec)
     else ec = error_code(errno);
 }
 
+void rename(const file& parent, const path& name,
+    const file& new_parent, const path& new_name, std::error_code& ec) noexcept
+{
+    if (0 == ::renameat(fd_or_cwd(parent), name.c_str(), fd_or_cwd(new_parent), new_name.c_str())) ec.clear();
+    else ec = error_code(errno);
+}
+
 }

@@ -142,4 +142,16 @@ inline void remove(const path& path, std::error_code& ec) noexcept { remove({}, 
 void remove_directory(const file& parent, const path& name, std::error_code&) noexcept;
 inline void remove_directory(const path& path, std::error_code& ec) noexcept { remove_directory({}, path, ec); }
 
+void rename(const file& parent, const path& name,
+    const file& new_parent, const path& new_name, std::error_code&) noexcept;
+inline void rename(const file& parent, const path& name, const path& new_path, std::error_code& ec) noexcept {
+    io::rename(parent, name, {}, new_path, ec);
+}
+inline void rename(const io::path& path, const file& new_parent, const io::path& new_name, std::error_code& ec) noexcept {
+    io::rename({}, path, new_parent, new_name, ec);
+}
+inline void rename(const io::path& path, const io::path& new_path, std::error_code& ec) noexcept {
+    io::rename({}, path, {}, new_path, ec);
+}
+
 }
