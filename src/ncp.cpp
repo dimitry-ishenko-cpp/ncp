@@ -101,6 +101,34 @@ bool confirm(context& ctx, std::string_view action, const io::file& target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void apply_attrs(context& ctx, const io::file& source, io::file& target, std::error_code& ec)
+{
+    io::mode mode = source.mode();
+
+    constexpr auto none = -1;
+    io::user_id uid = none; io::group_id gid = none;
+
+    if (ctx.keep_user)
+    {
+        if (!ctx.can_chown && source.user_id() != ctx.uid)
+        {
+            if (ctx.keep_mode)
+            {
+                mode &= ~(io::mode::set_uid | io::mode::set_gid);
+                ctx.attr_failed.store(true, std::memory_order_relaxed);
+            }
+        }
+        else uid = source.user_id();
+    }
+    if (ctx.keep_group) gid = source.group_id();
+
+    ec.clear();
+    // owner must be first, as it will strip suid/sgid bits; time must be last
+    if (!ec && (ctx.keep_user || ctx.keep_group)) target.owner(uid, gid, ec);
+    if (!ec && ctx.keep_mode) target.mode(mode, ec);
+    if (!ec && ctx.keep_time) target.time(source.time(), ec);
+}
+
 enum attr_option { include_all, exclude_mode, exclude_time };
 auto get_attr(context& ctx, const io::file& source, attr_option option)
 {
