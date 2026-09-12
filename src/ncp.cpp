@@ -967,13 +967,13 @@ try
 
             target.name = target_path.value();
             target.file = io::file{target.name, io::follow_symlinks, ec};
-            if (ec) throw io::exception{"main", target.name, ec};
+            if (ec) throw io::exception{"access", target.name, ec};
         }
         else if (destination_path)
         {
             target.name = destination_path.value();
             target.file = io::file{target.name, io::follow_symlinks, ec};
-            if (ec) throw io::exception{"main", target.name, ec};
+            if (ec) throw io::exception{"access", target.name, ec};
         }
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
@@ -1025,11 +1025,11 @@ try
 }
 catch (const io::exception& e)
 {
-    std::print("E: {}: '{}'\n", e.code().message(), e.path1().string());
+    fail("access", e.path1(), e.code());
     return invalid_argument;
 }
 catch (const std::exception& e)
 {
-    std::print("E: {}\n", e.what());
+    fail(e.what());
     return invalid_argument;
 };
