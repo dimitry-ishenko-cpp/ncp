@@ -206,7 +206,7 @@ auto copy_file(asio::thread_pool& pool, node source, node target)
 
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
-        if (ctx.move)
+        if (ctx.move && source.file.is_regular_file())
         {
             io::remove(source.parent, source.name, ec);
             if (ec) fail("remove", source.file, ec);
