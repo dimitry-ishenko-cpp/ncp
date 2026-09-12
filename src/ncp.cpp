@@ -5,7 +5,6 @@
 // Distributed under the GNU GPL license. See the LICENSE.md file for details.
 
 ////////////////////////////////////////////////////////////////////////////////
-#include "context.hpp"
 #include "io/file.hpp"
 #include "io/misc.hpp"
 #include "message.hpp"
@@ -15,7 +14,9 @@
 
 #include <array>
 #include <asio.hpp>
+#include <atomic>
 #include <charconv> // std::from_chars
+#include <chrono>
 #include <csignal>
 #include <cstdio> // std::getchar
 #include <exception>
@@ -32,42 +33,90 @@
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
-struct dir_attr_entry { io::file source, target; };
-std::vector<dir_attr_entry> dir_attrs;
-
-struct rmdir_entry { io::file parent; io::path name; };
-std::vector<rmdir_entry> rmdirs;
-
 enum class status { failed, copied, moved, unchanged, skipped };
+enum class unlink { never, always, auto_ };
+enum class update { none, all, older, changed, size, };
 
-void attr_fail(context& ctx, auto&&... args)
+struct
+{
+    std::size_t jobs = 1;
+
+    bool can_chown = false;
+    io::user_id uid = -1;
+
+    bool interactive = false;
+
+    bool keep_mode = false;
+    bool keep_time = false;
+    bool keep_user = false, keep_group = false;
+
+    bool keep_devices = false;
+    bool keep_links = false;
+    bool keep_special = false;
+
+    bool move = false;
+    bool progress = false;
+    bool recursive = false;
+    enum unlink unlink_ = unlink::auto_;
+    enum update update_ = update::all;
+    bool verbose = false;
+
+    ////////////////////
+    std::atomic<int> exit_signal{0};
+    std::atomic<bool> quit{ false };
+
+    std::atomic<bool> failed{ false }, attr_failed{ false };
+    bool copy_all = false, skip_all = false;
+
+    std::atomic<long> files_total{0}, files_copied{0};
+    std::atomic<long> bytes_total{0}, bytes_copied{0};
+    double percent_copied = 0;
+
+    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point last_time = start_time;
+    long last_bytes = 0;
+    double speed = 0;
+
+    struct dir_attr_entry { io::file source, target; };
+    std::vector<dir_attr_entry> dir_attrs;
+
+    struct rmdir_entry { io::file parent; io::path name; };
+    std::vector<rmdir_entry> rmdirs;
+}
+ctx;
+
+struct node
+{
+    const io::file& parent;
+    io::path name;
+    io::file file;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+void attr_fail(auto&&... args)
 {
     if (ctx.verbose) message("E:", std::forward<decltype (args)>(args)...);
     ctx.attr_failed.store(true, std::memory_order_relaxed);
 }
 
-auto fail(context& ctx, auto&&... args)
+auto fail(auto&&... args)
 {
     message("E:", std::forward<decltype (args)>(args)...);
     ctx.failed.store(true, std::memory_order_relaxed);
     return status::failed;
 }
 
-void info(context& ctx, auto&&... args) {
-    message("I:", std::forward<decltype (args)>(args)...);
-}
+void info(auto&&... args) { message("I:", std::forward<decltype (args)>(args)...); }
 
-auto skip(context& ctx, auto&&... args)
+auto skip(auto&&... args)
 {
     message("I:", std::forward<decltype (args)>(args)...);
     return status::skipped;
 }
 
-void verbose(context& ctx, auto&&... args) {
-    if (ctx.verbose) message("V:", std::forward<decltype (args)>(args)...);
-}
+void verbose(auto&&... args) { if (ctx.verbose) message("V:", std::forward<decltype (args)>(args)...); }
 
-bool confirm(context& ctx, std::string_view action, const io::file& target)
+bool confirm(std::string_view action, const io::file& target)
 {
     if (ctx.copy_all) return true;
     if (ctx.skip_all) return false;
@@ -95,7 +144,7 @@ bool confirm(context& ctx, std::string_view action, const io::file& target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void apply_attrs(context& ctx, const io::file& source, io::file& target, std::error_code& ec)
+void apply_attrs(const io::file& source, io::file& target, std::error_code& ec)
 {
     io::mode mode = source.mode();
 
@@ -124,7 +173,7 @@ void apply_attrs(context& ctx, const io::file& source, io::file& target, std::er
 }
 
 enum attr_option { include_all, exclude_mode, exclude_time };
-auto get_attr(context& ctx, const io::file& source, attr_option option)
+auto get_attr(const io::file& source, attr_option option)
 {
     io::attrib attr;
     if (ctx.keep_group) attr.gid = source.group_id();
@@ -149,14 +198,7 @@ bool is_attr_error(const std::error_code& ec) {
     return ec == std::errc::operation_not_permitted || ec == std::errc::not_supported;
 }
 
-struct node
-{
-    const io::file& parent;
-    io::path name;
-    io::file file;
-};
-
-auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, io::file target)
+auto copy_regular_file(asio::thread_pool& pool, io::file source, io::file target)
 {
     if (target && ctx.update_ == update::none) return status::unchanged;
 
@@ -174,13 +216,13 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
     if (target && need_create)
     {
         if (ctx.unlink_ == unlink::never)
-            return fail(ctx, "exists", target);
+            return fail("exists", target);
 
-        if (ctx.interactive && !confirm(ctx, "overwrite", target))
+        if (ctx.interactive && !confirm("overwrite", target))
             return status::skipped;
 
         io::remove(target.path(), ec);
-        if (ec) return fail(ctx, "remove", target, ec);
+        if (ec) return fail("remove", target, ec);
     }
 
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
@@ -195,18 +237,18 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
                 ctx.bytes_copied.fetch_add(source.size(), std::memory_order_relaxed);
-                verbose(ctx, "move", source, target);
+                verbose("move", source, target);
                 return status::moved;
             }
         }
 
-        asio::post(pool, [&ctx, source = std::move(source), target = std::move(target)]
+        asio::post(pool, [source = std::move(source), target = std::move(target)]
         {
             if (ctx.quit.load(std::memory_order_relaxed)) return;
 
             std::error_code ec;
             io::copy_file(source, target.path(), ec,
-                [&ctx](io::file_size chunk)
+                [](io::file_size chunk)
                 {
                     ctx.bytes_copied.fetch_add(chunk, std::memory_order_relaxed);
                     return !ctx.quit.load(std::memory_order_relaxed);
@@ -214,18 +256,18 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
 
             if (ec)
             {
-                fail(ctx, "copy", source, target, ec);
+                fail("copy", source, target, ec);
                 return;
             }
-            else verbose(ctx, "copy", source, target);
+            else verbose("copy", source, target);
 
-            if (auto attr = get_attr(ctx, source, include_all))
+            if (auto attr = get_attr(source, include_all))
             {
                 io::modify(target.path(), attr, ec);
                 if (ec)
                 {
-                    if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
-                    else { fail(ctx, "attrs", target, ec); return; }
+                    if (is_attr_error(ec)) attr_fail("attrs", target, ec);
+                    else { fail("attrs", target, ec); return; }
                 }
             }
 
@@ -234,21 +276,21 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
             if (ctx.move)
             {
                 io::remove(source.path(), ec);
-                if (ec) fail(ctx, "remove", source, ec);
+                if (ec) fail("remove", source, ec);
             }
         });
     }
     else
     {
-        if (auto attr = get_attr(ctx, source, include_all))
+        if (auto attr = get_attr(source, include_all))
         {
             io::modify(target.path(), attr, ec);
             if (ec)
             {
-                if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
-                else return fail(ctx, "attrs", target, ec);
+                if (is_attr_error(ec)) attr_fail("attrs", target, ec);
+                else return fail("attrs", target, ec);
             }
-            else verbose(ctx, "attrs", target);
+            else verbose("attrs", target);
         }
 
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
@@ -257,14 +299,14 @@ auto copy_regular_file(context& ctx, asio::thread_pool& pool, io::file source, i
         if (ctx.move)
         {
             io::remove(source.path(), ec);
-            if (ec) fail(ctx, "remove", source, ec);
+            if (ec) fail("remove", source, ec);
         }
     }
 
     return status::copied;
 }
 
-auto copy_directory(context& ctx, node source, node target)
+auto copy_directory(node source, node target)
 {
     std::error_code ec;
     bool create = false;
@@ -273,11 +315,11 @@ auto copy_directory(context& ctx, node source, node target)
     {
         if (!target.file.is_directory())
         {
-            if (ctx.unlink_ == unlink::never) return fail(ctx, "exists", target.file);
-            if (ctx.interactive && !confirm(ctx, "replace", target.file)) return status::skipped;
+            if (ctx.unlink_ == unlink::never) return fail("exists", target.file);
+            if (ctx.interactive && !confirm("replace", target.file)) return status::skipped;
 
             io::remove(target.parent, target.name, ec);
-            if (ec) return fail(ctx, "remove", target.file, ec);
+            if (ec) return fail("remove", target.file, ec);
             
             create = true;
         }
@@ -295,14 +337,14 @@ auto copy_directory(context& ctx, node source, node target)
             if (!ec)
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                verbose(ctx, "move", source.file, target.file);
+                verbose("move", source.file, target.file);
                 return status::moved;
             }
         }
 
         io::create_directory(target.parent, target.name, ec);
-        if (ec) return fail(ctx, "create dir", target.file, ec);
-        verbose(ctx, "create dir", target.file);
+        if (ec) return fail("create dir", target.file, ec);
+        verbose("create dir", target.file);
     }
 
     if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
@@ -310,20 +352,20 @@ auto copy_directory(context& ctx, node source, node target)
         if (create)
         {
             target.file = io::file{target.parent, target.name, ec};
-            if (ec) return fail(ctx, "access", target.file, ec);
+            if (ec) return fail("access", target.file, ec);
         }
 
-        dir_attrs.emplace_back(std::move(source.file), std::move(target.file));
+        ctx.dir_attrs.emplace_back(std::move(source.file), std::move(target.file));
     }
     else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
-    if (ctx.move) rmdirs.emplace_back(source.parent, std::move(source.name));
+    if (ctx.move) ctx.rmdirs.emplace_back(source.parent, std::move(source.name));
 
     return create ? status::copied : status::unchanged;
 }
 
 template <typename MatchFn, typename CreateFn>
-auto copy_generic(context& ctx, node source, node target, MatchFn&& match_fn, CreateFn&& create_fn)
+auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& create_fn)
 {
     std::error_code ec;
     bool create = false;
@@ -332,11 +374,11 @@ auto copy_generic(context& ctx, node source, node target, MatchFn&& match_fn, Cr
     {
         if (!match_fn(source, target) || ctx.unlink_ == unlink::always)
         {
-            if (ctx.unlink_ == unlink::never) return fail(ctx, "exists", target.file);
-            if (ctx.interactive && !confirm(ctx, "replace", target.file)) return status::skipped;
+            if (ctx.unlink_ == unlink::never) return fail("exists", target.file);
+            if (ctx.interactive && !confirm("replace", target.file)) return status::skipped;
 
             io::remove(target.parent, target.name, ec);
-            if (ec) return fail(ctx, "remove", target.file, ec);
+            if (ec) return fail("remove", target.file, ec);
 
             create = true;
         }
@@ -354,14 +396,14 @@ auto copy_generic(context& ctx, node source, node target, MatchFn&& match_fn, Cr
             if (!ec)
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                verbose(ctx, "move", source.file, target.file);
+                verbose("move", source.file, target.file);
                 return status::moved;
             }
         }
 
         create_fn(source, target, ec);
-        if (ec) return fail(ctx, "create", target.file, ec);
-        verbose(ctx, "create", target.file);
+        if (ec) return fail("create", target.file, ec);
+        verbose("create", target.file);
     }
 
     if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
@@ -369,16 +411,16 @@ auto copy_generic(context& ctx, node source, node target, MatchFn&& match_fn, Cr
         if (create)
         {
             target.file = io::file{target.parent, target.name, ec};
-            if (ec) return fail(ctx, "access", target.file, ec);
+            if (ec) return fail("access", target.file, ec);
         }
 
-        apply_attrs(ctx, source.file, target.file, ec);
+        apply_attrs(source.file, target.file, ec);
         if (ec)
         {
-            if (is_attr_error(ec)) attr_fail(ctx, "attrs", target.file, ec);
-            else return fail(ctx, "attrs", target.file, ec);
+            if (is_attr_error(ec)) attr_fail("attrs", target.file, ec);
+            else return fail("attrs", target.file, ec);
         }
-        else verbose(ctx, "attrs", target.file);
+        else verbose("attrs", target.file);
     }
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
@@ -386,19 +428,19 @@ auto copy_generic(context& ctx, node source, node target, MatchFn&& match_fn, Cr
     if (ctx.move)
     {
         io::remove(source.parent, source.name, ec);
-        if (ec) fail(ctx, "remove", source.file, ec);
+        if (ec) fail("remove", source.file, ec);
     }
 
     return create ? status::copied : status::unchanged;
 }
 
-auto copy_symlink(context& ctx, node source, node target)
+auto copy_symlink(node source, node target)
 {
     std::error_code ec;
     auto link_target = source.file.get_target_path(ec);
-    if (ec) return fail(ctx, "read symlink", source.file, ec);
+    if (ec) return fail("read symlink", source.file, ec);
 
-    return copy_generic(ctx, std::move(source), std::move(target),
+    return copy_generic(std::move(source), std::move(target),
         [&link_target](auto&&, auto&& target) {
             std::error_code ec;
             return target.file.get_target_path(ec) == link_target;
@@ -408,11 +450,11 @@ auto copy_symlink(context& ctx, node source, node target)
         });
 }
 
-auto copy_device(context& ctx, node source, node target)
+auto copy_device(node source, node target)
 {
-    if (!ctx.keep_devices) return skip(ctx, "skipping device file", source.file);
+    if (!ctx.keep_devices) return skip("skipping device file", source.file);
 
-    return copy_generic(ctx, std::move(source), std::move(target),
+    return copy_generic(std::move(source), std::move(target),
         [](auto&& source, auto&& target) {
             return target.file.type() == source.file.type()
                 && target.file.device_type() == source.file.device_type();
@@ -425,11 +467,11 @@ auto copy_device(context& ctx, node source, node target)
     );
 }
 
-auto copy_special(context& ctx, node source, node target)
+auto copy_special(node source, node target)
 {
-    if (!ctx.keep_special) return skip(ctx, "special file", source.file);
+    if (!ctx.keep_special) return skip("special file", source.file);
 
-    return copy_generic(ctx, std::move(source), std::move(target),
+    return copy_generic(std::move(source), std::move(target),
         [](auto&& source, auto&& target) {
             return target.file.type() == source.file.type();
         },
@@ -439,51 +481,51 @@ auto copy_special(context& ctx, node source, node target)
         });
 }
 
-auto copy_entry(context& ctx, asio::thread_pool& pool, node source, node target, bool from_walk)
+auto copy_entry(asio::thread_pool& pool, node source, node target, bool from_walk)
 {
-    if (target.file == source.file) return skip(ctx, "skipping same file", source.file, target.file);
+    if (target.file == source.file) return skip("skipping same file", source.file, target.file);
 
     switch (source.file.type())
     {
         case io::file_type::regular:
-            return copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
+            return copy_regular_file(pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::directory:
-            return copy_directory(ctx, std::move(source), std::move(target));
+            return copy_directory(std::move(source), std::move(target));
 
         case io::file_type::symlink:
-            return copy_symlink(ctx, std::move(source), std::move(target));
+            return copy_symlink(std::move(source), std::move(target));
 
         case io::file_type::block:
         case io::file_type::character:
-            return from_walk ? copy_device(ctx, std::move(source), std::move(target))
-                : copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
+            return from_walk ? copy_device(std::move(source), std::move(target))
+                : copy_regular_file(pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::fifo:
-            return from_walk ? copy_special(ctx, std::move(source), std::move(target))
-                : copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
+            return from_walk ? copy_special(std::move(source), std::move(target))
+                : copy_regular_file(pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::socket:
-            return from_walk ? copy_special(ctx, std::move(source), std::move(target))
-                : fail(ctx, "read socket", source.file);
+            return from_walk ? copy_special(std::move(source), std::move(target))
+                : fail("read socket", source.file);
 
         case io::file_type::not_found:
-            return fail(ctx, "non-extant", source.file);
+            return fail("non-extant", source.file);
 
-        default: return fail(ctx, "unknown file", source.file);
+        default: return fail("unknown file", source.file);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_tree(context& ctx, asio::thread_pool& pool, node source, node target, bool from_walk)
+void copy_tree(asio::thread_pool& pool, node source, node target, bool from_walk)
 {
     if (source.file.is_directory())
     {
-        if (!ctx.recursive) { skip(ctx, "skipping dir", source.file); return; }
+        if (!ctx.recursive) { skip("skipping dir", source.file); return; }
 
         std::error_code ec;
         // pass copies of source and target, as we need them below
-        auto status = copy_entry(ctx, pool, source, target, from_walk);
+        auto status = copy_entry(pool, source, target, from_walk);
 
         switch (status)
         {
@@ -492,7 +534,7 @@ void copy_tree(context& ctx, asio::thread_pool& pool, node source, node target, 
                 target.file = source.file.is_symlink()
                     ? io::file{target.parent, target.name, ec}
                     : io::file{target.parent, target.name, io::follow_symlinks, ec};
-                if (ec) { fail(ctx, "access", target.file, ec); return; }
+                if (ec) { fail("access", target.file, ec); return; }
                 // fallthrough
 
             case status::unchanged:
@@ -505,25 +547,25 @@ void copy_tree(context& ctx, asio::thread_pool& pool, node source, node target, 
                         child_source.file = ctx.keep_links
                             ? io::file{source.file, *name, ec}
                             : io::file{source.file, *name, io::follow_symlinks, ec};
-                        if (ec) { fail(ctx, "access", child_source.file, ec); continue; }
+                        if (ec) { fail("access", child_source.file, ec); continue; }
 
                         node child_target{ .parent = target.file, .name = *name };
                         child_target.file = child_source.file.is_symlink()
                             ? io::file{target.file, *name, ec}
                             : io::file{target.file, *name, io::follow_symlinks, ec};
-                        if (ec) { fail(ctx, "access", child_target.file, ec); continue; }
+                        if (ec) { fail("access", child_target.file, ec); continue; }
 
-                        copy_tree(ctx, pool, std::move(child_source), std::move(child_target), true);
+                        copy_tree(pool, std::move(child_source), std::move(child_target), true);
                     }
-                    else fail(ctx, "read dir", source.file, name.error());
+                    else fail("read dir", source.file, name.error());
 
             default:;
         }
     }
-    else copy_entry(ctx, pool, std::move(source), std::move(target), from_walk);
+    else copy_entry(pool, std::move(source), std::move(target), from_walk);
 }
 
-void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<node> sources, node target)
+void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node target)
 {
     if (target.file.is_directory())
     {
@@ -540,14 +582,14 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<node> sourc
                 new_target.file = source.file.is_symlink()
                     ? io::file{target.file, name, ec}
                     : io::file{target.file, name, io::follow_symlinks, ec};
-                if (ec) { fail(ctx, "access", new_target.file, ec); continue; }
+                if (ec) { fail("access", new_target.file, ec); continue; }
 
-                copy_tree(ctx, pool, std::move(source), std::move(new_target), false);
+                copy_tree(pool, std::move(source), std::move(new_target), false);
             }
             else
             {
                 // pass copy of the target, we still need it
-                copy_tree(ctx, pool, std::move(source), target, false);
+                copy_tree(pool, std::move(source), target, false);
             }
         }
     }
@@ -557,34 +599,34 @@ void copy_sources(context& ctx, asio::thread_pool& pool, std::vector<node> sourc
         {
             std::error_code ec;
             target.file = io::file{target.parent, target.name, ec};
-            if (ec) { fail(ctx, "access", target.file, ec); return; }
+            if (ec) { fail("access", target.file, ec); return; }
         }
-        copy_tree(ctx, pool, std::move(sources.front()), std::move(target), false);
+        copy_tree(pool, std::move(sources.front()), std::move(target), false);
     }
     else if (sources.size() > 1)
-        fail(ctx, "copy", target.file, std::make_error_code(std::errc::not_a_directory));
+        fail("copy", target.file, std::make_error_code(std::errc::not_a_directory));
 }
 
-void process_dirs(context& ctx)
+void process_dirs()
 {
     std::error_code ec;
-    for (auto&& [source, target] : std::views::reverse(dir_attrs))
+    for (auto&& [source, target] : std::views::reverse(ctx.dir_attrs))
     {
-        apply_attrs(ctx, source, target, ec);
+        apply_attrs(source, target, ec);
         if (ec)
         {
-            if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
-            else { fail(ctx, "attrs", target, ec); continue; }
+            if (is_attr_error(ec)) attr_fail("attrs", target, ec);
+            else { fail("attrs", target, ec); continue; }
         }
-        else verbose(ctx, "attrs", target);
+        else verbose("attrs", target);
 
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     }
 
-    for (auto&& [parent, name] : std::views::reverse(rmdirs))
+    for (auto&& [parent, name] : std::views::reverse(ctx.rmdirs))
     {
         io::remove_directory(parent, name, ec);
-        if (ec) fail(ctx, "remove dir", parent.path() / name, ec);
+        if (ec) fail("remove dir", parent.path() / name, ec);
     }
 }
 
@@ -606,7 +648,7 @@ auto format_time(std::chrono::seconds dur)
     else return std::format("{:%M:%S}", dur);
 }
 
-void show_progress(context& ctx, bool final = false)
+void show_progress(bool final = false)
 {
     auto files_total = ctx.files_total.load(std::memory_order_relaxed);
     auto files_copied = ctx.files_copied.load(std::memory_order_relaxed);
@@ -686,14 +728,10 @@ void show_progress(context& ctx, bool final = false)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-context* pctx = nullptr;
 extern "C" void signal_handler(int signal)
 {
-    if (pctx)
-    {
-        pctx->exit_signal = signal;
-        pctx->quit = true;
-    }
+    ctx.exit_signal = signal;
+    ctx.quit = true;
 }
 
 void show_usage(const pgm::args& args, const std::string& name)
@@ -788,7 +826,6 @@ try
 
     else
     {
-        context ctx;
         ctx.uid = io::effective_user_id();
         ctx.can_chown = ctx.uid ? io::have_cap_chown() : true;
 
@@ -869,7 +906,7 @@ try
             source.file = ctx.keep_links
                 ? io::file{source.name, ec}
                 : io::file{source.name, io::follow_symlinks, ec};
-            if (ec) fail(ctx, "access", source.file, ec);
+            if (ec) fail("access", source.file, ec);
             else sources.push_back(std::move(source));
         }
 
@@ -886,7 +923,7 @@ try
                 source.file = ctx.keep_links
                     ? io::file{source.name, ec}
                     : io::file{source.name, io::follow_symlinks, ec};
-                if (ec) fail(ctx, "access", source.file, ec);
+                if (ec) fail("access", source.file, ec);
                 else sources.push_back(std::move(source));
             }
 
@@ -905,31 +942,30 @@ try
         ////////////////////
         asio::thread_pool pool{ ctx.jobs };
 
-        pctx = &ctx;
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
         io::raise_open_file_limit();
 
         std::future<void> progress;
-        if (ctx.progress) progress = std::async(std::launch::async, [&ctx]
+        if (ctx.progress) progress = std::async(std::launch::async, []
         {
             while (!ctx.quit.load(std::memory_order_relaxed))
             {
                 std::this_thread::sleep_for(100ms);
-                show_progress(ctx);
+                show_progress();
             }
         });
 
-        copy_sources(ctx, pool, std::move(sources), std::move(target));
+        copy_sources(pool, std::move(sources), std::move(target));
         pool.join();
 
         // don't process dirs on Ctrl+C
-        if (!ctx.quit.exchange(true)) process_dirs(ctx);
+        if (!ctx.quit.exchange(true)) process_dirs();
 
         if (auto signal = ctx.exit_signal.exchange(0))
         {
-            info(ctx, "received signal " + std::to_string(signal) + ", exiting");
+            info("received signal " + std::to_string(signal) + ", exiting");
             code = interrupted;
         }
         else
@@ -937,13 +973,13 @@ try
             if (ctx.failed) code = copy_failed;
             else if (ctx.attr_failed) code = attr_failed;
 
-            if (ctx.attr_failed) info(ctx, "some attrs could not be preserved");
+            if (ctx.attr_failed) info("some attrs could not be preserved");
         }
 
         if (ctx.progress)
         {
             progress.wait();
-            show_progress(ctx, true); // final status
+            show_progress(true); // final status
         }
     }
 
