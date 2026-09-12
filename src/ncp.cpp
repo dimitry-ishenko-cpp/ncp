@@ -433,53 +433,6 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
     return create ? status::copied : status::unchanged;
 }
 
-auto copy_symlink(node source, node target)
-{
-    std::error_code ec;
-    auto link_target = source.file.get_target_path(ec);
-    if (ec) return fail("read symlink", source.file, ec);
-
-    return copy_generic(std::move(source), std::move(target),
-        [&link_target](auto&&, auto&& target) {
-            std::error_code ec;
-            return target.file.get_target_path(ec) == link_target;
-        },
-        [&link_target](auto&&, auto&& target, std::error_code& ec) {
-            io::create_symlink(target.parent, target.name, link_target, ec);
-        });
-}
-
-auto copy_device(node source, node target)
-{
-    if (!ctx.keep_devices) return skip("skipping device file", source.file);
-
-    return copy_generic(std::move(source), std::move(target),
-        [](auto&& source, auto&& target) {
-            return target.file.type() == source.file.type()
-                && target.file.device_type() == source.file.device_type();
-        },
-        [](auto&& source, auto&& target, std::error_code& ec) {
-            if (source.file.is_block_device())
-                io::create_block_device(target.parent, target.name, source.file.device_type(), ec);
-            else io::create_char_device(target.parent, target.name, source.file.device_type(), ec);
-        }
-    );
-}
-
-auto copy_special(node source, node target)
-{
-    if (!ctx.keep_special) return skip("special file", source.file);
-
-    return copy_generic(std::move(source), std::move(target),
-        [](auto&& source, auto&& target) {
-            return target.file.type() == source.file.type();
-        },
-        [](auto&& source, auto&& target, std::error_code& ec) {
-            if (source.file.is_fifo()) io::create_fifo(target.parent, target.name, ec);
-            else io::create_socket(target.parent, target.name, ec);
-        });
-}
-
 auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_level)
 {
     if (target.file == source.file) return skip("skipping same file", source.file, target.file);
@@ -493,23 +446,64 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
             return copy_directory(std::move(source), std::move(target));
 
         case io::file_type::symlink:
-            return copy_symlink(std::move(source), std::move(target));
+        {
+            std::error_code ec;
+            auto p = source.file.get_target_path(ec);
+            if (ec) return fail("read symlink", source.file, ec);
+
+            return copy_generic(std::move(source), std::move(target),
+                [&](auto&& s, auto&& t) { return t.file.get_target_path(ec) == p; },
+                [&](auto&& s, auto&& t, std::error_code& ec) { io::create_symlink(t.parent, t.name, p, ec); }
+            );
+        }
 
         case io::file_type::block:
+            if (ctx.keep_devices)
+                return copy_generic(std::move(source), std::move(target),
+                    [](auto&& s, auto&& t) {
+                        return s.file.type() == t.file.type() && s.file.device_type() == t.file.device_type();
+                    },
+                    [](auto&& s, auto&& t, std::error_code& ec) {
+                        io::create_block_device(t.parent, t.name, s.file.device_type(), ec);
+                    }
+                );
+            else if (top_level)
+                return copy_regular_file(pool, std::move(source), std::move(target));
+            else return skip("skipping block dev", source.file);
+
         case io::file_type::character:
-            return top_level
-                ? copy_regular_file(pool, std::move(source), std::move(target))
-                : copy_device(std::move(source), std::move(target));
+            if (ctx.keep_devices)
+                return copy_generic(std::move(source), std::move(target),
+                    [](auto&& s, auto&& t) {
+                        return s.file.type() == t.file.type() && s.file.device_type() == t.file.device_type();
+                    },
+                    [](auto&& s, auto&& t, std::error_code& ec) {
+                        io::create_char_device(t.parent, t.name, s.file.device_type(), ec);
+                    }
+                );
+            else if (top_level)
+                return copy_regular_file(pool, std::move(source), std::move(target));
+            else return skip("skipping char dev", source.file);
 
         case io::file_type::fifo:
-            return top_level
-                ? copy_regular_file(pool, std::move(source), std::move(target))
-                : copy_special(std::move(source), std::move(target));
+            if (ctx.keep_special)
+                return copy_generic(std::move(source), std::move(target),
+                    [](auto&& s, auto&& t) { return s.file.type() == t.file.type(); },
+                    [](auto&& s, auto&& t, std::error_code& ec) { io::create_fifo(t.parent, t.name, ec); }
+                );
+            else if (top_level)
+                return copy_regular_file(pool, std::move(source), std::move(target));
+            else return skip("skipping fifo", source.file);
 
         case io::file_type::socket:
-            return top_level
-                ? fail("read socket", source.file)
-                : copy_special(std::move(source), std::move(target));
+            if (ctx.keep_special)
+                return copy_generic(std::move(source), std::move(target),
+                    [](auto&& s, auto&& t) { return s.file.type() == t.file.type(); },
+                    [](auto&& s, auto&& t, std::error_code& ec) { io::create_socket(t.parent, t.name, ec); }
+                );
+            else if (top_level)
+                return copy_regular_file(pool, std::move(source), std::move(target));
+            else return skip("skipping socket", source.file);
 
         case io::file_type::not_found:
             return fail("non-extant", source.file);
