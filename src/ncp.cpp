@@ -15,7 +15,6 @@
 #include <atomic>
 #include <charconv> // std::from_chars
 #include <chrono>
-#include <csignal>
 #include <cstdio> // std::getchar
 #include <exception>
 #include <format>
@@ -766,12 +765,6 @@ void show_progress(bool final = false)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-extern "C" void signal_handler(int signal)
-{
-    ctx.exit_signal = signal;
-    ctx.quit = true;
-}
-
 void show_usage(const pgm::args& args, const std::string& name)
 {
     auto preamble = std::format(R"(
@@ -980,10 +973,8 @@ try
         ////////////////////
         asio::thread_pool pool{ ctx.jobs };
 
-        std::signal(SIGINT, signal_handler);
-        std::signal(SIGTERM, signal_handler);
-
         io::raise_open_file_limit();
+        io::set_signal_callback([](int signal) { ctx.exit_signal = signal; ctx.quit = true; });
 
         std::future<void> progress;
         if (ctx.progress) progress = std::async(std::launch::async, []

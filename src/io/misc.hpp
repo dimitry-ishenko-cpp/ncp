@@ -18,6 +18,8 @@ bool have_cap_chown() noexcept;
 
 void raise_open_file_limit() noexcept;
 
+void set_signal_callback(void (*)(int signal));
+
 int term_width() noexcept;
 
 }

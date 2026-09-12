@@ -7,6 +7,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "misc.hpp"
 
+#include <csignal>
+
 #include <sys/capability.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
@@ -38,6 +40,12 @@ void raise_open_file_limit() noexcept
         rl.rlim_cur = rl.rlim_max;
         ::setrlimit(RLIMIT_NOFILE, &rl);
     }
+}
+
+void set_signal_callback(void (*cb)(int signal))
+{
+    std::signal(SIGINT, cb);
+    std::signal(SIGTERM, cb);
 }
 
 int term_width() noexcept
