@@ -7,10 +7,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "io/file.hpp"
+#include "io/types.hpp"
 
 #include <memory>
-#include <optional>
 #include <system_error>
 #include <type_traits>
 
@@ -20,19 +19,6 @@
 namespace io
 {
 
-struct attrib
-{
-    std::optional<io::mode> mode;
-    std::optional<io::time> time;
-    std::optional<io::group_id> gid;
-    std::optional<io::user_id> uid;
-
-    explicit operator bool() const noexcept { return mode || time || gid || uid; }
-};
-
-void modify(const path&, const attrib&, std::error_code&) noexcept;
-
-////////////////////////////////////////////////////////////////////////////////
 struct acl
 {
     struct acl_delete { void operator()(acl_t p) { acl_free(p); } };

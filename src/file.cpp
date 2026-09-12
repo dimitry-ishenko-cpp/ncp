@@ -6,51 +6,13 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 #include "file.hpp"
-
-#include <array>
 #include <cerrno>
-#include <chrono>
-
-#include <dirent.h>
-#include <fcntl.h>
-#include <linux/fs.h>
-#include <sys/ioctl.h>
-#include <sys/sendfile.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <unistd.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
 
-namespace
-{
-
 inline auto make_error_code(int val) noexcept { return std::error_code{val, std::generic_category()}; }
-
-inline auto mtime(time time) noexcept
-{
-    using namespace std::chrono;
-    auto dur = time::clock::to_sys(time).time_since_epoch();
-    auto sec = duration_cast<seconds>(dur);
-    auto nsec = duration_cast<nanoseconds>(dur - sec);
-
-    return std::array{ timespec{0, UTIME_OMIT}, timespec{sec.count(), nsec.count()} };
-}
-
-}
-
-void modify(const path& path, const attrib& attr, std::error_code& ec) noexcept
-{
-    if (attr.mode && ::chmod(path.c_str(), static_cast<::mode_t>(*attr.mode)))
-        ec = make_error_code(errno);
-    else if (attr.time && ::utimensat(AT_FDCWD, path.c_str(), mtime(*attr.time).data(), AT_SYMLINK_NOFOLLOW))
-        ec = make_error_code(errno);
-    else if ((attr.uid || attr.gid) && ::lchown(path.c_str(), attr.uid.value_or(-1), attr.gid.value_or(-1)))
-        ec = make_error_code(errno);
-    else ec.clear();
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 acl get_acl(const path& path, std::error_code& ec)

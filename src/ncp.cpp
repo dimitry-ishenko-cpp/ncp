@@ -10,8 +10,6 @@
 #include "message.hpp"
 #include "pgm/args.hpp"
 
-#include "file.hpp"
-
 #include <array>
 #include <asio.hpp>
 #include <atomic>
@@ -170,28 +168,6 @@ void apply_attrs(const io::file& source, io::file& target, std::error_code& ec)
     if (!ec && (ctx.keep_user || ctx.keep_group)) target.owner(uid, gid, ec);
     if (!ec && ctx.keep_mode) target.mode(mode, ec);
     if (!ec && ctx.keep_time) target.time(source.time(), ec);
-}
-
-enum attr_option { include_all, exclude_mode, exclude_time };
-auto get_attr(const io::file& source, attr_option option)
-{
-    io::attrib attr;
-    if (ctx.keep_group) attr.gid = source.group_id();
-    if (ctx.keep_mode && option != exclude_mode) attr.mode= source.mode();
-    if (ctx.keep_time && option != exclude_time) attr.time= source.time();
-    if (ctx.keep_user )
-    {
-        if (!ctx.can_chown && source.user_id() != ctx.uid)
-        {
-            if (attr.mode)
-            {
-                *attr.mode &= ~(io::mode::set_uid | io::mode::set_gid);
-                ctx.attr_failed.store(true, std::memory_order_relaxed);
-            }
-        }
-        else attr.uid = source.user_id();
-    }
-    return attr;
 }
 
 bool is_attr_error(const std::error_code& ec) {
