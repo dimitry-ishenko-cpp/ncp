@@ -36,8 +36,6 @@ enum class update { none, all, older, changed, size, };
 
 struct
 {
-    std::size_t jobs = 1;
-
     bool can_chown = false;
     io::user_id uid = -1;
 
@@ -59,6 +57,8 @@ struct
     bool verbose = false;
 
     ////////////////////
+    std::optional<asio::thread_pool> pool;
+
     std::atomic<int> exit_signal{0};
     std::atomic<bool> quit{ false };
 
@@ -186,9 +186,9 @@ bool is_attr_error(const std::error_code& ec) {
     return ec == std::errc::operation_not_permitted || ec == std::errc::not_supported;
 }
 
-auto copy_file(asio::thread_pool& pool, node source, node target)
+auto copy_file(node source, node target)
 {
-    asio::post(pool, [source = std::move(source), target = std::move(target)] mutable
+    asio::post(*ctx.pool, [source = std::move(source), target = std::move(target)] mutable
     {
         if (ctx.quit.load(std::memory_order_relaxed)) return;
 
@@ -228,7 +228,7 @@ auto copy_file(asio::thread_pool& pool, node source, node target)
     return status::copied;
 }
 
-auto copy_top_level(asio::thread_pool& pool, node source, node target)
+auto copy_top_level(node source, node target)
 {
     std::error_code ec;
 
@@ -252,10 +252,10 @@ auto copy_top_level(asio::thread_pool& pool, node source, node target)
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
     ctx.bytes_total.fetch_add(source.file.size(), std::memory_order_relaxed);
 
-    return copy_file(pool, std::move(source), std::move(target));
+    return copy_file(std::move(source), std::move(target));
 }
 
-auto copy_regular_file(asio::thread_pool& pool, node source, node target)
+auto copy_regular_file(node source, node target)
 {
     std::error_code ec;
     bool create = false;
@@ -320,7 +320,7 @@ auto copy_regular_file(asio::thread_pool& pool, node source, node target)
             }
         }
 
-        return copy_file(pool, std::move(source), std::move(target));
+        return copy_file(std::move(source), std::move(target));
     }
 
     // already checked: ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group
@@ -472,7 +472,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
     return create ? status::copied : status::unchanged;
 }
 
-auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_level)
+auto copy_dispatch(node source, node target, bool top_level)
 {
     if (target.file == source.file) return skip("skipping same file", source, target);
 
@@ -480,8 +480,8 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
     {
         case io::file_type::regular:
             if (top_level && (target.file.is_device() || target.file.is_special()))
-                return copy_top_level(pool, std::move(source), std::move(target));
-            else return copy_regular_file(pool, std::move(source), std::move(target));
+                return copy_top_level(std::move(source), std::move(target));
+            else return copy_regular_file(std::move(source), std::move(target));
 
         case io::file_type::directory:
             return copy_directory(std::move(source), std::move(target));
@@ -509,7 +509,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     }
                 );
             else if (top_level)
-                return copy_top_level(pool, std::move(source), std::move(target));
+                return copy_top_level(std::move(source), std::move(target));
             else return skip("skipping block dev", source);
 
         case io::file_type::character:
@@ -523,7 +523,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     }
                 );
             else if (top_level)
-                return copy_top_level(pool, std::move(source), std::move(target));
+                return copy_top_level(std::move(source), std::move(target));
             else return skip("skipping char dev", source);
 
         case io::file_type::fifo:
@@ -533,7 +533,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     [](auto&& s, auto&& t, std::error_code& ec) { io::create_fifo(t.parent, t.name, ec); }
                 );
             else if (top_level)
-                return copy_top_level(pool, std::move(source), std::move(target));
+                return copy_top_level(std::move(source), std::move(target));
             else return skip("skipping fifo", source);
 
         case io::file_type::socket:
@@ -543,7 +543,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     [](auto&& s, auto&& t, std::error_code& ec) { io::create_socket(t.parent, t.name, ec); }
                 );
             else if (top_level)
-                return copy_top_level(pool, std::move(source), std::move(target));
+                return copy_top_level(std::move(source), std::move(target));
             else return skip("skipping socket", source);
 
         case io::file_type::not_found:
@@ -554,7 +554,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_tree(asio::thread_pool& pool, node source, node target, bool top_level)
+void copy_tree(node source, node target, bool top_level)
 {
     if (source.file.is_directory())
     {
@@ -562,7 +562,7 @@ void copy_tree(asio::thread_pool& pool, node source, node target, bool top_level
 
         std::error_code ec;
         // pass copies of source and target, as we need them below
-        auto status = copy_dispatch(pool, source, target, top_level);
+        auto status = copy_dispatch(source, target, top_level);
 
         switch (status)
         {
@@ -592,17 +592,17 @@ void copy_tree(asio::thread_pool& pool, node source, node target, bool top_level
                             : io::file{target.file, *name, io::follow_symlinks, ec};
                         if (ec) { fail("access", child_target, ec); continue; }
 
-                        copy_tree(pool, std::move(child_source), std::move(child_target), false);
+                        copy_tree(std::move(child_source), std::move(child_target), false);
                     }
                     else fail("read dir", source, name.error());
 
             default:;
         }
     }
-    else copy_dispatch(pool, std::move(source), std::move(target), top_level);
+    else copy_dispatch(std::move(source), std::move(target), top_level);
 }
 
-void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node target)
+void copy_sources(std::vector<node> sources, node target)
 {
     if (target.file.is_directory())
     {
@@ -621,12 +621,12 @@ void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node targe
                     : io::file{target.file, name, io::follow_symlinks, ec};
                 if (ec) { fail("access", new_target, ec); continue; }
 
-                copy_tree(pool, std::move(source), std::move(new_target), true);
+                copy_tree(std::move(source), std::move(new_target), true);
             }
             else
             {
                 // pass copy of the target, we still need it
-                copy_tree(pool, std::move(source), target, true);
+                copy_tree(std::move(source), target, true);
             }
         }
     }
@@ -638,7 +638,7 @@ void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node targe
             target.file = io::file{target.parent, target.name, ec};
             if (ec) { fail("access", target, ec); return; }
         }
-        copy_tree(pool, std::move(sources.front()), std::move(target), true);
+        copy_tree(std::move(sources.front()), std::move(target), true);
     }
     else if (sources.size() > 1)
         fail("copy", target, std::make_error_code(std::errc::not_a_directory));
@@ -884,12 +884,13 @@ try
         if (args["--user"]) ctx.keep_user = true;
         if (args["--verbose"]) ctx.verbose = true;
 
+        auto threads = 1;
         if (auto&& jobs = args["--jobs"])
         {
-            auto n = parse(jobs.value()).value_or(-1);
-            if (n < 1 || n > 16) throw pgm::invalid_argument{ "bad --jobs value '" + jobs.value() + "'"};
-            ctx.jobs = n;
+            threads = parse(jobs.value()).value_or(-1);
+            if (threads < 1 || threads > 16) throw pgm::invalid_argument{ "bad --jobs value '" + jobs.value() + "'"};
         }
+        ctx.pool.emplace(threads);
 
         if (args["--recursive"]) ctx.recursive = true;
         // keep symlinks in recursive mode by default
@@ -971,7 +972,6 @@ try
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
         ////////////////////
-        asio::thread_pool pool{ ctx.jobs };
 
         auto nofile = io::max_open_file_limit(ec);
         if (!ec) io::set_open_file_limit(nofile, ec);
@@ -988,8 +988,8 @@ try
             }
         });
 
-        copy_sources(pool, std::move(sources), std::move(target));
-        pool.join();
+        copy_sources(std::move(sources), std::move(target));
+        ctx.pool->join();
 
         // don't process dirs on Ctrl+C
         if (!ctx.quit.exchange(true)) process_dirs();
