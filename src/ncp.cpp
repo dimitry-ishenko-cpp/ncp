@@ -323,112 +323,119 @@ auto copy_directory(context& ctx, node source, node target)
 }
 
 template <typename MatchFn, typename CreateFn>
-auto copy_generic(context& ctx, io::file source, io::file target, attr_option option,
-    MatchFn&& is_match, CreateFn&& create)
+auto copy_generic(context& ctx, node source, node target, MatchFn&& match_fn, CreateFn&& create_fn)
 {
-    if (target && ctx.update_ == update::none) return status::unchanged;
+    std::error_code ec;
+    bool create = false;
+
+    if (target.file)
+    {
+        if (!match_fn(source, target) || ctx.unlink_ == unlink::always)
+        {
+            if (ctx.unlink_ == unlink::never) return fail(ctx, "exists", target.file);
+            if (ctx.interactive && !confirm(ctx, "replace", target.file)) return status::skipped;
+
+            io::remove(target.parent, target.name, ec);
+            if (ec) return fail(ctx, "remove", target.file, ec);
+
+            create = true;
+        }
+        else if (ctx.update_ == update::none) return status::unchanged;
+    }
+    else create = true;
 
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
 
-    std::error_code ec;
-    bool need_create = !target || !is_match(source, target) || ctx.unlink_ == unlink::always;
-    if (target && need_create)
-    {
-        if (ctx.unlink_ == unlink::never)
-            return fail(ctx, "exists", target);
-
-        if (ctx.interactive && !confirm(ctx, "replace", target))
-            return status::skipped;
-
-        io::remove(target.path(), ec);
-        if (ec) return fail(ctx, "remove", target, ec);
-    }
-
-    if (need_create)
+    if (create)
     {
         if (ctx.move)
         {
-            io::rename(source.path(), target.path(), ec);
+            io::rename(source.parent, source.name, target.parent, target.name, ec);
             if (!ec)
             {
                 ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                verbose(ctx, "move", source, target);
+                verbose(ctx, "move", source.file, target.file);
                 return status::moved;
             }
         }
 
-        create(source, target, ec);
-        if (ec) return fail(ctx, "create", target, ec);
-        verbose(ctx, "create", target);
+        create_fn(source, target, ec);
+        if (ec) return fail(ctx, "create", target.file, ec);
+        verbose(ctx, "create", target.file);
     }
 
-    if (auto attr = get_attr(ctx, source, option))
+    if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
     {
-        io::modify(target.path(), attr, ec);
+        if (create)
+        {
+            target.file = io::file{target.parent, target.name, ec};
+            if (ec) return fail(ctx, "access", target.file, ec);
+        }
+
+        apply_attrs(ctx, source.file, target.file, ec);
         if (ec)
         {
-            if (is_attr_error(ec)) attr_fail(ctx, "attrs", target, ec);
-            else return fail(ctx, "attrs", target, ec);
+            if (is_attr_error(ec)) attr_fail(ctx, "attrs", target.file, ec);
+            else return fail(ctx, "attrs", target.file, ec);
         }
-        else verbose(ctx, "attrs", target);
+        else verbose(ctx, "attrs", target.file);
     }
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
     if (ctx.move)
     {
-        io::remove(source.path(), ec);
-        if (ec) fail(ctx, "remove", source, ec);
+        io::remove(source.parent, source.name, ec);
+        if (ec) fail(ctx, "remove", source.file, ec);
     }
 
-    return status::copied;
+    return create ? status::copied : status::unchanged;
 }
 
-auto copy_symlink(context& ctx, io::file source, io::file target)
+auto copy_symlink(context& ctx, node source, node target)
 {
     std::error_code ec;
-    auto link_target = source.get_target_path(ec);
-    if (ec) return fail(ctx, "read symlink", source, ec);
+    auto link_target = source.file.get_target_path(ec);
+    if (ec) return fail(ctx, "read symlink", source.file, ec);
 
-    return copy_generic(ctx, std::move(source), std::move(target), exclude_mode,
-        [&link_target](auto&& src, auto&& tgt) {
+    return copy_generic(ctx, std::move(source), std::move(target),
+        [&link_target](auto&&, auto&& target) {
             std::error_code ec;
-            return tgt.get_target_path(ec) == link_target;
+            return target.file.get_target_path(ec) == link_target;
         },
-        [&link_target](auto&& src, auto&& tgt, std::error_code& ec) {
-            io::create_symlink(tgt.path(), link_target, ec);
+        [&link_target](auto&&, auto&& target, std::error_code& ec) {
+            io::create_symlink(target.parent, target.name, link_target, ec);
         });
 }
 
-auto copy_device(context& ctx, io::file source, io::file target)
+auto copy_device(context& ctx, node source, node target)
 {
-    if (!ctx.keep_devices)
-        return skip(ctx, "skipping device file", source);
+    if (!ctx.keep_devices) return skip(ctx, "skipping device file", source.file);
 
-    return copy_generic(ctx, std::move(source), std::move(target), include_all,
-        [](auto&& src, auto&& tgt) {
-            return tgt.type() == src.type() && tgt.device_type() == src.device_type();
+    return copy_generic(ctx, std::move(source), std::move(target),
+        [](auto&& source, auto&& target) {
+            return target.file.type() == source.file.type()
+                && target.file.device_type() == source.file.device_type();
         },
-        [](auto&& src, auto&& tgt, std::error_code& ec) {
-            if (src.is_block_device())
-                io::create_block_device(tgt.path(), src.device_type(), ec);
-            else io::create_char_device(tgt.path(), src.device_type(), ec);
+        [](auto&& source, auto&& target, std::error_code& ec) {
+            if (source.file.is_block_device())
+                io::create_block_device(target.parent, target.name, source.file.device_type(), ec);
+            else io::create_char_device(target.parent, target.name, source.file.device_type(), ec);
         }
     );
 }
 
-auto copy_special(context& ctx, io::file source, io::file target)
+auto copy_special(context& ctx, node source, node target)
 {
-    if (!ctx.keep_special)
-        return skip(ctx, "special file", source);
+    if (!ctx.keep_special) return skip(ctx, "special file", source.file);
 
-    return copy_generic(ctx, std::move(source), std::move(target), include_all,
-        [](auto&& src, auto&& tgt) {
-            return tgt.type() == src.type();
+    return copy_generic(ctx, std::move(source), std::move(target),
+        [](auto&& source, auto&& target) {
+            return target.file.type() == source.file.type();
         },
-        [](auto&& src, auto&& tgt, std::error_code& ec) {
-            if (src.is_fifo()) io::create_fifo(tgt.path(), ec);
-            else io::create_socket(tgt.path(), ec);
+        [](auto&& source, auto&& target, std::error_code& ec) {
+            if (source.file.is_fifo()) io::create_fifo(target.parent, target.name, ec);
+            else io::create_socket(target.parent, target.name, ec);
         });
 }
 
@@ -445,20 +452,20 @@ auto copy_entry(context& ctx, asio::thread_pool& pool, node source, node target,
             return copy_directory(ctx, std::move(source), std::move(target));
 
         case io::file_type::symlink:
-            return copy_symlink(ctx, std::move(source.file), std::move(target.file));
+            return copy_symlink(ctx, std::move(source), std::move(target));
 
         case io::file_type::block:
         case io::file_type::character:
-            if (from_walk) return copy_device(ctx, std::move(source.file), std::move(target.file));
-            else return copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
+            return from_walk ? copy_device(ctx, std::move(source), std::move(target))
+                : copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::fifo:
-            if (from_walk) return copy_special(ctx, std::move(source.file), std::move(target.file));
-            else return copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
+            return from_walk ? copy_special(ctx, std::move(source), std::move(target))
+                : copy_regular_file(ctx, pool, std::move(source.file), std::move(target.file));
 
         case io::file_type::socket:
-            if (from_walk) return copy_special(ctx, std::move(source.file), std::move(target.file));
-            else return fail(ctx, "read socket", source.file);
+            return from_walk ? copy_special(ctx, std::move(source), std::move(target))
+                : fail(ctx, "read socket", source.file);
 
         case io::file_type::not_found:
             return fail(ctx, "non-extant", source.file);
