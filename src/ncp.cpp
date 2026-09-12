@@ -22,6 +22,7 @@
 #include <optional>
 #include <print>
 #include <ranges> // std::views::reverse
+#include <semaphore>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -58,6 +59,7 @@ struct
 
     ////////////////////
     std::optional<asio::thread_pool> pool;
+    std::optional<std::counting_semaphore<>> semaphore;
 
     std::atomic<int> exit_signal{0};
     std::atomic<bool> quit{ false };
@@ -188,8 +190,11 @@ bool is_attr_error(const std::error_code& ec) {
 
 auto copy_file(node source, node target)
 {
+    ctx.semaphore->acquire();
     asio::post(*ctx.pool, [source = std::move(source), target = std::move(target)] mutable
     {
+        struct scope_exit { ~scope_exit() { ctx.semaphore->release(); } } guard;
+
         if (ctx.quit.load(std::memory_order_relaxed)) return;
 
         std::error_code ec;
@@ -788,7 +793,6 @@ std::optional<int> parse(std::string_view text)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 enum exit_code
 {
     success = 0,
@@ -972,11 +976,12 @@ try
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
         ////////////////////
-
-        auto nofile = io::max_open_file_limit(ec);
-        if (!ec) io::set_open_file_limit(nofile, ec);
-
         io::set_signal_callback([](int signal) { ctx.exit_signal = signal; ctx.quit = true; });
+
+        auto max = io::max_open_file_limit(ec);
+        if (!ec) io::set_open_file_limit(max, ec);
+
+        ctx.semaphore.emplace(max * .2); // 4 desc per task @ 80% capacity
 
         std::future<void> progress;
         if (ctx.progress) progress = std::async(std::launch::async, []
