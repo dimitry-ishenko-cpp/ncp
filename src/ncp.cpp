@@ -973,7 +973,9 @@ try
         ////////////////////
         asio::thread_pool pool{ ctx.jobs };
 
-        io::raise_open_file_limit();
+        auto nofile = io::max_open_file_limit(ec);
+        if (!ec) io::set_open_file_limit(nofile, ec);
+
         io::set_signal_callback([](int signal) { ctx.exit_signal = signal; ctx.quit = true; });
 
         std::future<void> progress;

@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "misc.hpp"
 
+#include <cerrno>
 #include <csignal>
 
 #include <sys/capability.h>
@@ -17,6 +18,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
 {
+
+namespace
+{
+
+inline auto error_code(int val) noexcept {
+    return std::error_code{val, std::generic_category()};
+}
+
+}
 
 user_id effective_user_id() noexcept { return ::geteuid(); }
 
@@ -32,14 +42,19 @@ bool have_cap_chown() noexcept
     return have_caps;
 }
 
-void raise_open_file_limit() noexcept
+std::uint64_t max_open_file_limit(std::error_code& ec) noexcept
 {
     struct rlimit rl;
-    if (0 == ::getrlimit(RLIMIT_NOFILE, &rl))
-    {
-        rl.rlim_cur = rl.rlim_max;
-        ::setrlimit(RLIMIT_NOFILE, &rl);
-    }
+    if (0 == ::getrlimit(RLIMIT_NOFILE, &rl)) ec.clear();
+    else ec = error_code(errno);
+    return rl.rlim_max;
+}
+
+void set_open_file_limit(std::uint64_t nofile, std::error_code& ec) noexcept
+{
+    struct rlimit rl{ .rlim_cur = nofile, .rlim_max = nofile };
+    if (0 == ::setrlimit(RLIMIT_NOFILE, &rl)) ec.clear();
+    else ec = error_code(errno);
 }
 
 void set_signal_callback(void (*cb)(int signal))
