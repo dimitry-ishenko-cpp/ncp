@@ -127,14 +127,14 @@ auto skip(auto&&... args)
 
 void verbose(auto&&... args) { if (ctx.verbose) message("V:", std::forward<decltype (args)>(args)...); }
 
-bool confirm(std::string_view action, const io::file& target)
+bool confirm(std::string_view action, const node& target)
 {
     if (ctx.copy_all) return true;
     if (ctx.skip_all) return false;
 
     for (auto lock = get_print_lock();;)
     {
-        print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, target.path().string());
+        print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, target.file.path().string());
 
         auto c = std::getchar();
         auto reply = c;
@@ -239,7 +239,7 @@ auto copy_regular_file(asio::thread_pool& pool, node source, node target)
         if (!target.file.is_regular_file() || ctx.unlink_ == unlink::always)
         {
             if (ctx.unlink_ == unlink::never) return fail("exists", target);
-            if (ctx.interactive && !confirm("overwrite", target.file)) return status::skipped;
+            if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
 
             io::remove(target.parent, target.name, ec);
             if (ec) return fail("remove", target, ec);
@@ -266,11 +266,11 @@ auto copy_regular_file(asio::thread_pool& pool, node source, node target)
 
             if (create)
             {
-                if (ctx.interactive && !confirm("overwrite", target.file)) return status::skipped;
+                if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
             }
             else if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
             {
-                if (ctx.interactive && !confirm("update", target.file)) return status::skipped;
+                if (ctx.interactive && !confirm("update", target)) return status::skipped;
             }
             else return status::unchanged;
         }
@@ -328,7 +328,7 @@ auto copy_directory(node source, node target)
         if (!target.file.is_directory())
         {
             if (ctx.unlink_ == unlink::never) return fail("exists", target);
-            if (ctx.interactive && !confirm("replace", target.file)) return status::skipped;
+            if (ctx.interactive && !confirm("replace", target)) return status::skipped;
 
             io::remove(target.parent, target.name, ec);
             if (ec) return fail("remove", target, ec);
@@ -387,7 +387,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
         if (!match_fn(source, target) || ctx.unlink_ == unlink::always)
         {
             if (ctx.unlink_ == unlink::never) return fail("exists", target);
-            if (ctx.interactive && !confirm("replace", target.file)) return status::skipped;
+            if (ctx.interactive && !confirm("replace", target)) return status::skipped;
 
             io::remove(target.parent, target.name, ec);
             if (ec) return fail("remove", target, ec);
