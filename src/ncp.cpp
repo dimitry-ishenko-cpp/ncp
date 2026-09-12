@@ -480,7 +480,7 @@ auto copy_special(node source, node target)
         });
 }
 
-auto copy_entry(asio::thread_pool& pool, node source, node target, bool top_level)
+auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_level)
 {
     if (target.file == source.file) return skip("skipping same file", source.file, target.file);
 
@@ -527,7 +527,7 @@ void copy_tree(asio::thread_pool& pool, node source, node target, bool top_level
 
         std::error_code ec;
         // pass copies of source and target, as we need them below
-        auto status = copy_entry(pool, source, target, top_level);
+        auto status = copy_dispatch(pool, source, target, top_level);
 
         switch (status)
         {
@@ -564,7 +564,7 @@ void copy_tree(asio::thread_pool& pool, node source, node target, bool top_level
             default:;
         }
     }
-    else copy_entry(pool, std::move(source), std::move(target), top_level);
+    else copy_dispatch(pool, std::move(source), std::move(target), top_level);
 }
 
 void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node target)
