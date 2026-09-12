@@ -229,6 +229,33 @@ auto copy_file(asio::thread_pool& pool, node source, node target)
     return status::copied;
 }
 
+auto copy_top_level(asio::thread_pool& pool, node source, node target)
+{
+    std::error_code ec;
+
+    if (target.file)
+    {
+        if (target.file.is_directory() || ctx.unlink_ == unlink::always)
+        {
+            if (ctx.unlink_ == unlink::never) return fail("exists", target);
+            if (ctx.interactive && !confirm("replace", target)) return status::skipped;
+
+            io::remove(target.parent, target.name, ec);
+            if (ec) return fail("remove", target, ec);
+        }
+        else
+        {
+            if (ctx.update_ == update::none) return status::unchanged;
+            if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
+        }
+    }
+
+    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+    ctx.bytes_total.fetch_add(source.file.size(), std::memory_order_relaxed);
+
+    return copy_file(pool, std::move(source), std::move(target));
+}
+
 auto copy_regular_file(asio::thread_pool& pool, node source, node target)
 {
     std::error_code ec;
@@ -453,7 +480,9 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
     switch (source.file.type())
     {
         case io::file_type::regular:
-            return copy_regular_file(pool, std::move(source), std::move(target));
+            if (top_level && (target.file.is_device() || target.file.is_special()))
+                return copy_top_level(pool, std::move(source), std::move(target));
+            else return copy_regular_file(pool, std::move(source), std::move(target));
 
         case io::file_type::directory:
             return copy_directory(std::move(source), std::move(target));
@@ -481,7 +510,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     }
                 );
             else if (top_level)
-                return copy_regular_file(pool, std::move(source), std::move(target));
+                return copy_top_level(pool, std::move(source), std::move(target));
             else return skip("skipping block dev", source);
 
         case io::file_type::character:
@@ -495,7 +524,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     }
                 );
             else if (top_level)
-                return copy_regular_file(pool, std::move(source), std::move(target));
+                return copy_top_level(pool, std::move(source), std::move(target));
             else return skip("skipping char dev", source);
 
         case io::file_type::fifo:
@@ -505,7 +534,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     [](auto&& s, auto&& t, std::error_code& ec) { io::create_fifo(t.parent, t.name, ec); }
                 );
             else if (top_level)
-                return copy_regular_file(pool, std::move(source), std::move(target));
+                return copy_top_level(pool, std::move(source), std::move(target));
             else return skip("skipping fifo", source);
 
         case io::file_type::socket:
@@ -515,7 +544,7 @@ auto copy_dispatch(asio::thread_pool& pool, node source, node target, bool top_l
                     [](auto&& s, auto&& t, std::error_code& ec) { io::create_socket(t.parent, t.name, ec); }
                 );
             else if (top_level)
-                return copy_regular_file(pool, std::move(source), std::move(target));
+                return copy_top_level(pool, std::move(source), std::move(target));
             else return skip("skipping socket", source);
 
         case io::file_type::not_found:
