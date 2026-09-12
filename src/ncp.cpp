@@ -91,6 +91,16 @@ struct node
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+namespace std
+{
+template <> struct formatter<io::path> : formatter<string_view> {
+    auto format(auto&& p, auto& ctx) const { return formatter<string_view>::format(p.string(), ctx); }
+};
+template <> struct formatter<io::file> : formatter<string_view> {
+    auto format(auto&& f, auto& ctx) const { return formatter<string_view>::format(f.path().string(), ctx); }
+};
+}
+
 void attr_fail(auto&&... args)
 {
     if (ctx.verbose) message("E:", std::forward<decltype (args)>(args)...);

@@ -7,8 +7,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "io/file.hpp"
-
 #include <cstdio> // std::fflush
 #include <format>
 #include <mutex>
@@ -40,9 +38,6 @@ void print(print_option option, std::format_string<Args...> fmt, Args&&... args)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-inline auto s(const io::file& f) { return f.path().string(); }
-inline auto s(const io::path& p) { return p.string(); }
-
 inline void message(std::string_view msg) {
     print(retain, "{}\n", msg);
 }
@@ -50,14 +45,14 @@ inline void message(std::string_view type, std::string_view msg) {
     print(retain, "{} {}\n", type, msg);
 }
 inline void message(std::string_view type, std::string_view msg, auto&& file) {
-    print(retain, "{} {} '{}'\n", type, msg, s(file));
+    print(retain, "{} {} '{}'\n", type, msg, file);
 }
 inline void message(std::string_view type, std::string_view msg, auto&& source, auto&& target) {
-    print(retain, "{} {} '{}' => '{}'\n", type, msg, s(source), s(target));
+    print(retain, "{} {} '{}' => '{}'\n", type, msg, source, target);
 }
 inline void message(std::string_view type, std::string_view msg, auto&& file, std::error_code ec) {
-    print(retain, "{} {} '{}': {}\n", type, msg, s(file), ec.message());
+    print(retain, "{} {} '{}': {}\n", type, msg, file, ec.message());
 }
 inline void message(std::string_view type, std::string_view msg, auto&& source, auto&& target, std::error_code ec) {
-    print(retain, "{} {} '{}' => '{}': {}\n", type, msg, s(source), s(target), ec.message());
+    print(retain, "{} {} '{}' => '{}': {}\n", type, msg, source, target, ec.message());
 }
