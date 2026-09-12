@@ -481,7 +481,7 @@ auto copy_special(node source, node target)
         });
 }
 
-auto copy_entry(asio::thread_pool& pool, node source, node target, bool from_walk)
+auto copy_entry(asio::thread_pool& pool, node source, node target, bool top_level)
 {
     if (target.file == source.file) return skip("skipping same file", source.file, target.file);
 
@@ -498,16 +498,19 @@ auto copy_entry(asio::thread_pool& pool, node source, node target, bool from_wal
 
         case io::file_type::block:
         case io::file_type::character:
-            return from_walk ? copy_device(std::move(source), std::move(target))
-                : copy_regular_file(pool, std::move(source.file), std::move(target.file));
+            return top_level
+                ? copy_regular_file(pool, std::move(source.file), std::move(target.file))
+                : copy_device(std::move(source), std::move(target));
 
         case io::file_type::fifo:
-            return from_walk ? copy_special(std::move(source), std::move(target))
-                : copy_regular_file(pool, std::move(source.file), std::move(target.file));
+            return top_level
+                ? copy_regular_file(pool, std::move(source.file), std::move(target.file))
+                : copy_special(std::move(source), std::move(target));
 
         case io::file_type::socket:
-            return from_walk ? copy_special(std::move(source), std::move(target))
-                : fail("read socket", source.file);
+            return top_level
+                ? fail("read socket", source.file)
+                : copy_special(std::move(source), std::move(target));
 
         case io::file_type::not_found:
             return fail("non-extant", source.file);
@@ -517,7 +520,7 @@ auto copy_entry(asio::thread_pool& pool, node source, node target, bool from_wal
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_tree(asio::thread_pool& pool, node source, node target, bool from_walk)
+void copy_tree(asio::thread_pool& pool, node source, node target, bool top_level)
 {
     if (source.file.is_directory())
     {
@@ -525,7 +528,7 @@ void copy_tree(asio::thread_pool& pool, node source, node target, bool from_walk
 
         std::error_code ec;
         // pass copies of source and target, as we need them below
-        auto status = copy_entry(pool, source, target, from_walk);
+        auto status = copy_entry(pool, source, target, top_level);
 
         switch (status)
         {
@@ -555,14 +558,14 @@ void copy_tree(asio::thread_pool& pool, node source, node target, bool from_walk
                             : io::file{target.file, *name, io::follow_symlinks, ec};
                         if (ec) { fail("access", child_target.file, ec); continue; }
 
-                        copy_tree(pool, std::move(child_source), std::move(child_target), true);
+                        copy_tree(pool, std::move(child_source), std::move(child_target), false);
                     }
                     else fail("read dir", source.file, name.error());
 
             default:;
         }
     }
-    else copy_entry(pool, std::move(source), std::move(target), from_walk);
+    else copy_entry(pool, std::move(source), std::move(target), top_level);
 }
 
 void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node target)
@@ -584,12 +587,12 @@ void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node targe
                     : io::file{target.file, name, io::follow_symlinks, ec};
                 if (ec) { fail("access", new_target.file, ec); continue; }
 
-                copy_tree(pool, std::move(source), std::move(new_target), false);
+                copy_tree(pool, std::move(source), std::move(new_target), true);
             }
             else
             {
                 // pass copy of the target, we still need it
-                copy_tree(pool, std::move(source), target, false);
+                copy_tree(pool, std::move(source), target, true);
             }
         }
     }
@@ -601,7 +604,7 @@ void copy_sources(asio::thread_pool& pool, std::vector<node> sources, node targe
             target.file = io::file{target.parent, target.name, ec};
             if (ec) { fail("access", target.file, ec); return; }
         }
-        copy_tree(pool, std::move(sources.front()), std::move(target), false);
+        copy_tree(pool, std::move(sources.front()), std::move(target), true);
     }
     else if (sources.size() > 1)
         fail("copy", target.file, std::make_error_code(std::errc::not_a_directory));
