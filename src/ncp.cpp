@@ -85,7 +85,7 @@ ctx;
 
 struct node
 {
-    const io::file& parent;
+    io::file parent;
     io::path name;
     io::file file;
 };
