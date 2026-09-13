@@ -158,6 +158,24 @@ bool confirm(std::string_view action, const node& target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool copy_file(const node& source, const node& target, const io::progress_callback& cb)
+{
+    std::error_code ec;
+    io::copy_file(source.file, target.parent, target.name, ec, cb);
+
+    if (ec)
+    {
+        message(E, "copy", source.file.path().string(), target.file.path().string(), ec);
+        ctx.failed.store(true, std::memory_order_relaxed);
+        return false;
+    }
+    else
+    {
+        if (ctx.verbose) message(V, "copy", source.file.path().string(), target.file.path().string());
+        return true;
+    }
+}
+
 bool remove_file(const node& node)
 {
     std::error_code ec;
@@ -250,18 +268,14 @@ auto post_copy_file(node source, node target)
 
         if (ctx.exiting()) return;
 
-        auto cb = source.file.size()
+        copy_file(source, target, source.file.size()
             ? [](io::file_size b) { ctx.add_bytes_copied(b); return !ctx.exiting(); }
-            : [](io::file_size b) { ctx.add_bytes_total(b); ctx.add_bytes_copied(b); return !ctx.exiting(); };
-
-        std::error_code ec;
-        io::copy_file(source.file, target.parent, target.name, ec, cb);
-
-        if (ec) { fail("copy", source, target, ec); return; }
-        else verbose("copy", source, target);
+            : [](io::file_size b) { ctx.add_bytes_total(b); ctx.add_bytes_copied(b); return !ctx.exiting(); }
+        );
 
         if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
         {
+            std::error_code ec;
             target.file = io::file{target.parent, target.name, ec};
             if (ec) { fail("access", target, ec); return; }
 
