@@ -153,6 +153,19 @@ bool confirm(std::string_view action, const node& target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool remove_file(const node& node)
+{
+    std::error_code ec;
+    io::remove(node.parent, node.name, ec);
+    if (ec)
+    {
+        message(E, "remove", node.file.path().string());
+        ctx.failed.store(true, std::memory_order_relaxed);
+        return false;
+    }
+    else return true;
+}
+
 void apply_attr(std::string_view type,
     const io::file& source, io::file& target, std::error_code& ec, auto&& apply)
 {
@@ -259,11 +272,7 @@ auto post_copy_file(node source, node target)
 
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
-        if (ctx.move && source.file.is_regular_file())
-        {
-            io::remove(source.parent, source.name, ec);
-            if (ec) fail("remove", source, ec);
-        }
+        if (ctx.move && source.file.is_regular_file()) remove_file(source);
     });
 
     return status::copied;
@@ -280,8 +289,7 @@ auto copy_top_level(node source, node target)
             if (ctx.unlink_ == unlink::never) return fail("exists", target);
             if (ctx.interactive && !confirm("replace", target)) return status::skipped;
 
-            io::remove(target.parent, target.name, ec);
-            if (ec) return fail("remove", target, ec);
+            if (!remove_file(target)) return status::failed;
         }
         else
         {
@@ -308,8 +316,7 @@ auto copy_regular_file(node source, node target)
             if (ctx.unlink_ == unlink::never) return fail("exists", target);
             if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
 
-            io::remove(target.parent, target.name, ec);
-            if (ec) return fail("remove", target, ec);
+            if (!remove_file(target)) return status::failed;
 
             create = true;
         }
@@ -370,13 +377,9 @@ auto copy_regular_file(node source, node target)
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
         ctx.bytes_copied.fetch_add(source.file.size(), std::memory_order_relaxed);
 
-        if (ctx.move)
-        {
-            io::remove(source.parent, source.name, ec);
-            if (ec) fail("remove", source, ec);
-        }
+        if (ctx.move) remove_file(source);
 
-        return status::copied;
+        return status::unchanged;
     }
 }
 
@@ -392,8 +395,7 @@ auto copy_directory(node source, node target)
             if (ctx.unlink_ == unlink::never) return fail("exists", target);
             if (ctx.interactive && !confirm("replace", target)) return status::skipped;
 
-            io::remove(target.parent, target.name, ec);
-            if (ec) return fail("remove", target, ec);
+            if (!remove_file(target)) return status::failed;
             
             create = true;
         }
@@ -451,8 +453,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
             if (ctx.unlink_ == unlink::never) return fail("exists", target);
             if (ctx.interactive && !confirm("replace", target)) return status::skipped;
 
-            io::remove(target.parent, target.name, ec);
-            if (ec) return fail("remove", target, ec);
+            if (!remove_file(target)) return status::failed;
 
             create = true;
         }
@@ -493,11 +494,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
 
-    if (ctx.move)
-    {
-        io::remove(source.parent, source.name, ec);
-        if (ec) fail("remove", source, ec);
-    }
+    if (ctx.move) remove_file(source);
 
     return create ? status::copied : status::unchanged;
 }
