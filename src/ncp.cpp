@@ -359,12 +359,10 @@ auto copy_regular_file(node source, node target)
                 default: create = true;
             }
 
-            if (create)
-            {
+            if (create) {
                 if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
             }
-            else if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
-            {
+            else if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group) {
                 if (ctx.interactive && !confirm("update", target)) return status::skipped;
             }
             else return status::unchanged;
@@ -994,7 +992,7 @@ try
         auto max = io::max_open_file_limit(ec);
         if (!ec) io::set_open_file_limit(max, ec);
 
-        ctx.semaphore.emplace(max * .2); // 4 desc per task @ 80% capacity
+        ctx.semaphore.emplace(max / 5); // 4 desc per task @ 80% capacity
 
         std::future<void> progress;
         if (ctx.progress) progress = std::async(std::launch::async, []
