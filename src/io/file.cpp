@@ -69,7 +69,7 @@ file::file(const file& parent, const io::path& path, bool follow, std::error_cod
 
         if (type_ == file_type::block)
         {
-            if (desc fd{ ::open(proxy_path(fd_).c_str(), O_RDONLY | O_CLOEXEC) })
+            if (desc fd{ ::open(proxy_path(fd_).c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK) })
             {
                 std::uint64_t bytes = 0;
                 if (0 == ::ioctl(fd.get(), BLKGETSIZE64, &bytes)) size_ = bytes;
