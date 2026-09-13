@@ -110,12 +110,6 @@ constexpr auto I = "I:";
 constexpr auto V = "V:";
 constexpr auto W = "W:";
 
-void attr_fail(auto&&... args)
-{
-    if (ctx.verbose) message(W, std::forward<decltype (args)>(args)...);
-    ctx.attr_failed.store(true, std::memory_order_relaxed);
-}
-
 auto fail(auto&&... args)
 {
     message(E, std::forward<decltype (args)>(args)...);
@@ -161,7 +155,31 @@ bool confirm(std::string_view action, const node& target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void apply_attrs(const io::file& source, io::file& target, std::error_code& ec)
+void apply_attr(std::string_view type,
+    const io::file& source, io::file& target, std::error_code& ec, auto&& apply)
+{
+    constexpr auto not_permitted = std::errc::operation_not_permitted;
+    constexpr auto not_supported = std::errc::not_supported;
+
+    std::error_code ed;
+    apply(source, target, ed);
+    if (ed)
+    {
+        if (ed == not_permitted || ed == not_supported)
+        {
+            if (ctx.verbose) message(W, type, target.path().string(), ed);
+            ctx.attr_failed.store(true, std::memory_order_relaxed);
+        }
+        else if (!ec)
+        {
+            ec = ed;
+            message(E, type, target.path().string(), ec);
+            ctx.failed.store(true, std::memory_order_relaxed);
+        }
+    }
+}
+
+bool apply_attrs(const io::file& source, io::file& target, bool verbose = false)
 {
     io::mode mode = source.mode();
 
@@ -174,23 +192,37 @@ void apply_attrs(const io::file& source, io::file& target, std::error_code& ec)
         {
             if (ctx.keep_mode)
             {
-                mode &= ~(io::mode::set_uid | io::mode::set_gid);
-                ctx.attr_failed.store(true, std::memory_order_relaxed);
+                auto new_mode = mode & ~(io::mode::set_uid | io::mode::set_gid);
+                if (new_mode != mode)
+                {
+                    mode = new_mode;
+                    ctx.attr_failed.store(true, std::memory_order_relaxed);
+                }
             }
         }
         else uid = source.user_id();
     }
     if (ctx.keep_group) gid = source.group_id();
 
-    ec.clear();
-    // owner must be first, as it will strip suid/sgid bits; time must be last
-    if (!ec && (ctx.keep_user || ctx.keep_group)) target.owner(uid, gid, ec);
-    if (!ec && ctx.keep_mode) target.mode(mode, ec);
-    if (!ec && ctx.keep_time) target.time(source.time(), ec);
-}
+    std::error_code ec;
 
-bool is_attr_error(const std::error_code& ec) {
-    return ec == std::errc::operation_not_permitted || ec == std::errc::not_supported;
+    // owner must be first, as it will strip suid/sgid bits; time must be last
+    if (ctx.keep_user || ctx.keep_group) apply_attr("owner", source, target, ec,
+        [uid, gid](auto&&, auto&& t, std::error_code& ed) { t.owner(uid, gid, ed); }
+    );
+    if (ctx.keep_mode) apply_attr("mode", source, target, ec,
+        [mode](auto&&, auto&& t, std::error_code& ed) { t.mode(mode, ed); }
+    );
+    if (ctx.keep_time) apply_attr("time", source, target, ec,
+        [](auto&& s, auto&& t, std::error_code& ed) { t.time(s.time(), ed); }
+    );
+
+    if (!ec)
+    {
+        if (verbose && ctx.verbose) message(V, "attrs", target.path().string());
+        return true;
+    }
+    else return false;
 }
 
 auto copy_file(node source, node target)
@@ -224,12 +256,7 @@ auto copy_file(node source, node target)
             target.file = io::file{target.parent, target.name, ec};
             if (ec) { fail("access", target, ec); return; }
 
-            apply_attrs(source.file, target.file, ec);
-            if (ec)
-            {
-                if (is_attr_error(ec)) attr_fail("attrs", target, ec);
-                else { fail("attrs", target, ec); return; }
-            }
+            if (!apply_attrs(source.file, target.file)) return;
         }
 
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
@@ -338,26 +365,21 @@ auto copy_regular_file(node source, node target)
 
         return copy_file(std::move(source), std::move(target));
     }
-
-    // already checked: ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group
-    apply_attrs(source.file, target.file, ec);
-    if (ec)
+    else // already checked ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group
     {
-        if (is_attr_error(ec)) attr_fail("attrs", target, ec);
-        else return fail("attrs", target, ec);
+        if (!apply_attrs(source.file, target.file, true)) return status::failed;
+
+        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        ctx.bytes_copied.fetch_add(source.file.size(), std::memory_order_relaxed);
+
+        if (ctx.move)
+        {
+            io::remove(source.parent, source.name, ec);
+            if (ec) fail("remove", source, ec);
+        }
+
+        return status::copied;
     }
-    else verbose("attrs", target);
-
-    ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-    ctx.bytes_copied.fetch_add(source.file.size(), std::memory_order_relaxed);
-
-    if (ctx.move)
-    {
-        io::remove(source.parent, source.name, ec);
-        if (ec) fail("remove", source, ec);
-    }
-
-    return status::copied;
 }
 
 auto copy_directory(node source, node target)
@@ -457,7 +479,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
 
         create_fn(source, target, ec);
         if (ec) return fail("create", target, ec);
-        verbose("create", target);
+        else verbose("create", target);
     }
 
     if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
@@ -468,13 +490,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
             if (ec) return fail("access", target, ec);
         }
 
-        apply_attrs(source.file, target.file, ec);
-        if (ec)
-        {
-            if (is_attr_error(ec)) attr_fail("attrs", target, ec);
-            else return fail("attrs", target, ec);
-        }
-        else verbose("attrs", target);
+        if (!apply_attrs(source.file, target.file, !create)) return status::failed;
     }
 
     ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
@@ -665,14 +681,7 @@ void process_dirs()
     std::error_code ec;
     for (auto&& [source, target] : std::views::reverse(ctx.dir_attrs))
     {
-        apply_attrs(source, target, ec);
-        if (ec)
-        {
-            if (is_attr_error(ec)) attr_fail("attrs", target, ec);
-            else { fail("attrs", target, ec); continue; }
-        }
-        else verbose("attrs", target);
-
+        if (!apply_attrs(source, target, true)) continue;
         ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
     }
 
