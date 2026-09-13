@@ -94,13 +94,7 @@ struct node
 ////////////////////////////////////////////////////////////////////////////////
 namespace std
 {
-template <> struct formatter<io::path> : formatter<string_view> {
-    auto format(auto&& p, auto& ctx) const { return formatter<string_view>::format(p.string(), ctx); }
-};
-template <> struct formatter<io::file> : formatter<string_view> {
-    auto format(auto&& f, auto& ctx) const { return formatter<string_view>::format(f.path().string(), ctx); }
-};
-template <> struct formatter<  node  > : formatter<string_view> {
+template <> struct formatter<node> : formatter<string_view> {
     auto format(auto&& n, auto& ctx) const { return formatter<string_view>::format(n.file.path().string(), ctx); }
 };
 }
@@ -683,7 +677,7 @@ void process_dirs()
     for (auto&& [parent, name] : std::views::reverse(ctx.rmdirs))
     {
         io::remove_directory(parent, name, ec);
-        if (ec) fail("remove dir", parent.path() / name, ec);
+        if (ec) fail("remove dir", (parent.path() / name).string(), ec);
     }
 }
 
@@ -1038,11 +1032,11 @@ try
 }
 catch (const io::exception& e)
 {
-    fail("access", e.path1(), e.code());
+    message(E, "access", e.path1().string(), e.code());
     return invalid_argument;
 }
 catch (const std::exception& e)
 {
-    fail(e.what());
+    message(E, e.what());
     return invalid_argument;
 };
