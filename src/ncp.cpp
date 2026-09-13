@@ -165,8 +165,7 @@ bool copy_file(const node& source, const node& target, const io::progress_callba
 
     if (ec)
     {
-        message(E, "copy", source.file.path().string(), target.file.path().string(), ec);
-        ctx.failed.store(true, std::memory_order_relaxed);
+        fail("copy", source.file.path().string(), target.file.path().string(), ec);
         return false;
     }
     else
@@ -182,8 +181,7 @@ bool remove_file(const node& node)
     io::remove(node.parent, node.name, ec);
     if (ec)
     {
-        message(E, "remove", node.file.path().string());
-        ctx.failed.store(true, std::memory_order_relaxed);
+        fail("remove", node.file.path().string());
         return false;
     }
     else return true;
@@ -216,12 +214,7 @@ void apply_attr(std::string_view type,
             if (ctx.verbose) message(W, type, target.path().string(), ed);
             ctx.attr_failed.store(true, std::memory_order_relaxed);
         }
-        else if (!ec)
-        {
-            ec = ed;
-            message(E, type, target.path().string(), ec);
-            ctx.failed.store(true, std::memory_order_relaxed);
-        }
+        else if (!ec) fail(type, target.path().string(), ec = ed);
     }
 }
 
