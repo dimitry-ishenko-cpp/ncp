@@ -197,13 +197,19 @@ auto copy_file(node source, node target)
 
         if (ctx.quit.load(std::memory_order_relaxed)) return;
 
-        std::error_code ec;
-        io::copy_file(source.file, target.parent, target.name, ec,
-            [](io::file_size chunk)
-            {
+        auto cb = source.file.size()
+            ? [](io::file_size chunk) {
                 ctx.bytes_copied.fetch_add(chunk, std::memory_order_relaxed);
                 return !ctx.quit.load(std::memory_order_relaxed);
-            });
+            }
+            : [](io::file_size chunk) {
+                ctx.bytes_total.fetch_add(chunk, std::memory_order_relaxed);
+                ctx.bytes_copied.fetch_add(chunk, std::memory_order_relaxed);
+                return !ctx.quit.load(std::memory_order_relaxed);
+            };
+
+        std::error_code ec;
+        io::copy_file(source.file, target.parent, target.name, ec, cb);
 
         if (ec) { fail("copy", source, target, ec); return; }
         else verbose("copy", source, target);
