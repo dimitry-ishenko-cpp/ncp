@@ -41,6 +41,19 @@ DESTINATION            Destination file or directory.
 
 ## Installation
 
+### Binary
+
+Binary packages for Debian, Ubuntu, RaspberryPi and other Debian-based
+distributions can be installed from the [CCCP Linux Package
+Archive](https://github.com/cccp-linux/archive). Follow their instructions to
+set up the archive and be sure to add the _main_ component. After that:
+
+```shell
+sudo apt install ncp
+```
+
+### From source
+
 _TODO_
 
 Share and enjoy.
