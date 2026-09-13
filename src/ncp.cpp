@@ -293,8 +293,6 @@ auto post_copy_file(node source, node target)
 
 auto copy_top_level(node source, node target)
 {
-    std::error_code ec;
-
     if (target.file)
     {
         if (target.file.is_directory() || ctx.unlink_ == unlink::always)
@@ -318,7 +316,6 @@ auto copy_top_level(node source, node target)
 
 auto copy_regular_file(node source, node target)
 {
-    std::error_code ec;
     bool create = false;
 
     if (target.file)
@@ -384,7 +381,6 @@ auto copy_regular_file(node source, node target)
 
 auto copy_directory(node source, node target)
 {
-    std::error_code ec;
     bool create = false;
 
     if (target.file)
@@ -418,6 +414,7 @@ auto copy_directory(node source, node target)
     {
         if (create)
         {
+            std::error_code ec;
             target.file = io::file{target.parent, target.name, ec};
             if (ec) return fail("access", target, ec);
         }
@@ -589,13 +586,13 @@ void copy_tree(node source, node target, bool top_level)
         }
 
         std::error_code ec;
-        // pass copies of source and target, as we need them below
+        // pass copies of the source and target, as we need them below
         auto status = copy_dispatch(source, target, top_level);
 
         switch (status)
         {
             case status::copied:
-                // reread target, as it has changed
+                // reread the target, as it has changed
                 target.file = source.file.is_symlink()
                     ? io::file{target.parent, target.name, ec}
                     : io::file{target.parent, target.name, io::follow_symlinks, ec};
@@ -653,7 +650,8 @@ void copy_sources(std::vector<node> sources, node target)
             }
             else
             {
-                // pass copy of the target, we still need it
+                // don't need to reopen the target here, as the source is a directory (it ends with /);
+                // pass a copy of the target, because we also need it for other sources
                 copy_tree(std::move(source), target, true);
             }
         }
@@ -674,7 +672,6 @@ void copy_sources(std::vector<node> sources, node target)
 
 void process_dirs()
 {
-    std::error_code ec;
     for (auto&& [source, target] : std::views::reverse(ctx.dir_attrs))
     {
         if (!apply_attrs(source, target, true)) continue;
@@ -683,6 +680,7 @@ void process_dirs()
 
     for (auto&& [parent, name] : std::views::reverse(ctx.rmdirs))
     {
+        std::error_code ec;
         io::remove_directory(parent, name, ec);
         if (ec) fail("remove dir", (parent.path() / name).string(), ec);
     }
