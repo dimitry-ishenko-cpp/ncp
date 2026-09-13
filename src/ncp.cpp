@@ -191,13 +191,13 @@ bool rename_file(const node& source, const node& target)
 }
 
 void apply_attr(std::string_view type,
-    const io::file& source, io::file& target, std::error_code& ec, auto&& apply)
+    const io::file& source, io::file& target, std::error_code& ec, auto&& apply_fn)
 {
     constexpr auto not_permitted = std::errc::operation_not_permitted;
     constexpr auto not_supported = std::errc::not_supported;
 
     std::error_code ed;
-    apply(source, target, ed);
+    apply_fn(source, target, ed);
     if (ed)
     {
         if (ed == not_permitted || ed == not_supported)
@@ -238,10 +238,10 @@ bool apply_attrs(const io::file& source, io::file& target, bool verbose = false)
 
     // owner must be first, as it will strip suid/sgid bits; time must be last
     if (ctx.keep_user || ctx.keep_group) apply_attr("owner", source, target, ec,
-        [uid, gid](auto&&, auto&& t, std::error_code& ed) { t.owner(uid, gid, ed); }
+        [uid, gid](auto&& s, auto&& t, std::error_code& ed) { t.owner(uid, gid, ed); }
     );
     if (ctx.keep_mode) apply_attr("mode", source, target, ec,
-        [mode](auto&&, auto&& t, std::error_code& ed) { t.mode(mode, ed); }
+        [mode](auto&& s, auto&& t, std::error_code& ed) { t.mode(mode, ed); }
     );
     if (ctx.keep_time) apply_attr("time", source, target, ec,
         [](auto&& s, auto&& t, std::error_code& ed) { t.time(s.time(), ed); }
@@ -422,10 +422,8 @@ auto copy_directory(node source, node target)
     return create ? status::copied : status::unchanged;
 }
 
-template <typename MatchFn, typename CreateFn>
-auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& create_fn)
+auto copy_generic(node source, node target, auto&& match_fn, auto&& create_fn)
 {
-    std::error_code ec;
     bool create = false;
 
     if (target.file)
@@ -452,15 +450,17 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
             return status::moved;
         }
 
+        std::error_code ec;
         create_fn(source, target, ec);
-        if (ec) return fail("create", target, ec);
-        else verbose("create", target);
+        if (ec) { fail("create", target, ec); return status::failed; }
+        else { verbose("create", target); }
     }
 
     if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
     {
         if (create)
         {
+            std::error_code ec;
             target.file = io::file{target.parent, target.name, ec};
             if (ec) return fail("access", target, ec);
         }
@@ -499,8 +499,8 @@ auto copy_dispatch(node source, node target, bool top_level)
             if (ec) return fail("read symlink", source, ec);
 
             return copy_generic(std::move(source), std::move(target),
-                [&](auto&& s, auto&& t) { return t.file.get_target_path(ec) == p; },
-                [&](auto&& s, auto&& t, std::error_code& ec) { io::create_symlink(t.parent, t.name, p, ec); }
+                [&p](auto&& s, auto&& t) { std::error_code ec; return t.file.get_target_path(ec) == p; },
+                [&p](auto&& s, auto&& t, std::error_code& ec) { io::create_symlink(t.parent, t.name, p, ec); }
             );
         }
 
