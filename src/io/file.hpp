@@ -13,7 +13,11 @@
 #include <expected>
 #include <functional>
 #include <generator>
+#include <memory>
 #include <system_error> // std::error_code
+#include <type_traits> // std::remove_pointer_t
+
+#include <sys/acl.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace io
@@ -165,5 +169,19 @@ inline void rename(const io::path& path, const file& new_parent, const io::path&
 inline void rename(const io::path& path, const io::path& new_path, std::error_code& ec) noexcept {
     io::rename({}, path, {}, new_path, ec);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+struct acl
+{
+    struct acl_delete { void operator()(acl_t p) { acl_free(p); } };
+    using acl_ptr = std::unique_ptr<std::remove_pointer_t<acl_t>, acl_delete>;
+
+    acl_ptr access, default_;
+
+    constexpr explicit operator bool() const noexcept { return access || default_; }
+};
+
+acl get_acl(const file&, std::error_code&);
+void set_acl(const file&, const io::acl&, std::error_code&);
 
 }

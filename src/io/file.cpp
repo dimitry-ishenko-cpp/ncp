@@ -347,4 +347,39 @@ void rename(const file& parent, const path& name,
     else ec = error_code(errno);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+acl get_acl(const file& file, std::error_code& ec)
+{
+    acl acl;
+
+    ec.clear();
+    if (file.is_symlink()) return acl;
+
+    auto path = proxy_path(file.fd());
+
+    acl.access.reset(::acl_get_file(path.c_str(), ACL_TYPE_ACCESS));
+    if (!acl.access && errno != ENODATA && errno != ENOTSUP) ec = error_code(errno);
+
+    if (acl.access && file.is_directory())
+    {
+        acl.default_.reset(::acl_get_file(path.c_str(), ACL_TYPE_DEFAULT));
+        if (!acl.default_ && errno != ENODATA && errno != ENOTSUP) ec = error_code(errno);
+    }
+
+    return acl;
+}
+
+void set_acl(const file& file, const acl& acl, std::error_code& ec)
+{
+    ec.clear();
+    if (file.is_symlink()) return;
+
+    auto path = proxy_path(file.fd());
+    if (acl.access && 0 != ::acl_set_file(path.c_str(), ACL_TYPE_ACCESS, acl.access.get()))
+        ec = error_code(errno);
+
+    if (!ec && acl.default_ && 0 != ::acl_set_file(path.c_str(), ACL_TYPE_DEFAULT, acl.default_.get()))
+        ec = error_code(errno);
+}
+
 }
