@@ -189,6 +189,18 @@ bool remove_file(const node& node)
     else return true;
 }
 
+bool rename_file(const node& source, const node& target)
+{
+    std::error_code ec;
+    io::rename(source.parent, source.name, target.parent, target.name, ec);
+    if (!ec)
+    {
+        if (ctx.verbose) message(V, "move", source.file.path().string(), target.file.path().string());
+        return true;
+    }
+    else return false;
+}
+
 void apply_attr(std::string_view type,
     const io::file& source, io::file& target, std::error_code& ec, auto&& apply)
 {
@@ -405,15 +417,10 @@ auto copy_directory(node source, node target)
 
     if (create)
     {
-        if (ctx.move)
+        if (ctx.move && rename_file(source, target))
         {
-            io::rename(source.parent, source.name, target.parent, target.name, ec);
-            if (!ec)
-            {
-                ctx.add_files_copied(1);
-                verbose("move", source, target);
-                return status::moved;
-            }
+            ctx.add_files_copied(1);
+            return status::moved;
         }
 
         io::create_directory(target.parent, target.name, ec);
@@ -462,15 +469,10 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
 
     if (create)
     {
-        if (ctx.move)
+        if (ctx.move && rename_file(source, target))
         {
-            io::rename(source.parent, source.name, target.parent, target.name, ec);
-            if (!ec)
-            {
-                ctx.add_files_copied(1);
-                verbose("move", source, target);
-                return status::moved;
-            }
+            ctx.add_files_copied(1);
+            return status::moved;
         }
 
         create_fn(source, target, ec);
