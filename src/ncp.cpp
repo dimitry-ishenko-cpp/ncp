@@ -62,7 +62,8 @@ struct context
     std::optional<std::counting_semaphore<>> semaphore;
 
     std::atomic<int> exit_signal{0};
-    std::atomic<bool> quit{ false };
+    std::atomic<bool> exit{ false };
+    inline bool exiting() noexcept { return exit.load(std::memory_order_relaxed); }
 
     std::atomic<bool> failed{ false }, attr_failed{ false };
     bool copy_all = false, skip_all = false;
@@ -151,7 +152,7 @@ bool confirm(std::string_view action, const node& target)
             case 's': case 'S': ctx.skip_all = true; return false;
 
             case EOF: std::print("q\n");
-            case 'q': case 'Q': ctx.quit = true; return false;
+            case 'q': case 'Q': ctx.exit = true; return false;
         }
     }
 }
@@ -247,17 +248,11 @@ auto post_copy_file(node source, node target)
     {
         struct scope_exit { ~scope_exit() { ctx.semaphore->release(); } } guard;
 
-        if (ctx.quit.load(std::memory_order_relaxed)) return;
+        if (ctx.exiting()) return;
 
         auto cb = source.file.size()
-            ? [](io::file_size b) {
-                ctx.add_bytes_copied(b);
-                return !ctx.quit.load(std::memory_order_relaxed);
-            }
-            : [](io::file_size b) {
-                ctx.add_bytes_total(b); ctx.add_bytes_copied(b);
-                return !ctx.quit.load(std::memory_order_relaxed);
-            };
+            ? [](io::file_size b) { ctx.add_bytes_copied(b); return !ctx.exiting(); }
+            : [](io::file_size b) { ctx.add_bytes_total(b); ctx.add_bytes_copied(b); return !ctx.exiting(); };
 
         std::error_code ec;
         io::copy_file(source.file, target.parent, target.name, ec, cb);
@@ -604,7 +599,7 @@ void copy_tree(node source, node target, bool top_level)
                 for (auto&& name : io::directory_iterator(source.file))
                     if (name)
                     {
-                        if (ctx.quit.load(std::memory_order_relaxed)) break;
+                        if (ctx.exiting()) break;
 
                         node child_source{ .parent = source.file, .name = *name };
                         child_source.file = ctx.keep_links
@@ -634,7 +629,7 @@ void copy_sources(std::vector<node> sources, node target)
     {
         for (auto&& source : sources)
         {
-            if (ctx.quit.load(std::memory_order_relaxed)) break;
+            if (ctx.exiting()) break;
 
             if (source.name.has_filename()) // rsync-style behavior
             {
@@ -712,7 +707,7 @@ void show_progress(bool final = false)
     auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
 
     auto percent = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
-    if (ctx.quit.load(std::memory_order_relaxed)) ctx.percent_copied = percent;
+    if (ctx.exiting()) ctx.percent_copied = percent;
     else ctx.percent_copied += (percent - ctx.percent_copied) * 0.33;
 
     using namespace std::chrono;
@@ -990,7 +985,7 @@ try
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
         ////////////////////
-        io::set_signal_callback([](int signal) { ctx.exit_signal = signal; ctx.quit = true; });
+        io::set_signal_callback([](int signal) { ctx.exit_signal = signal; ctx.exit = true; });
 
         auto max = io::max_open_file_limit(ec);
         if (!ec) io::set_open_file_limit(max, ec);
@@ -1000,7 +995,7 @@ try
         std::future<void> progress;
         if (ctx.progress) progress = std::async(std::launch::async, []
         {
-            while (!ctx.quit.load(std::memory_order_relaxed))
+            while (!ctx.exiting())
             {
                 std::this_thread::sleep_for(100ms);
                 show_progress();
@@ -1011,7 +1006,7 @@ try
         ctx.pool->join();
 
         // don't process dirs on Ctrl+C
-        if (!ctx.quit.exchange(true)) process_dirs();
+        if (!ctx.exit.exchange(true)) process_dirs();
 
         if (auto signal = ctx.exit_signal.exchange(0))
         {
