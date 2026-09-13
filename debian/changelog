@@ -1,3 +1,80 @@
+ncp (0.6) unstable; urgency=medium
+
+  * Prepare for 0.6
+  * ncp: fix for zero-length files
+  * io: size check may block
+  * Add symlink test
+  * Update README.md
+  * Remove old file bits
+  * io: add get_acl() and set_acl()
+  * ncp: limit copy task queue
+  * ncp: move thread_pool into ctx
+  * ncp: refactor open file limit
+  * ncp: move signal handling into io
+  * ncp: tweak
+  * ncp: add copy_top_level()
+  * ncp: fix UB
+  * ncp: tweak confirm()
+  * ncp: tweak messages
+  * message: decouple from io types
+  * ncp: don't delete devices/special
+  * ncp: refactor copy_dispatch
+  * ncp: copy_entry => copy_dispatch
+  * Remove old file bits
+  * ncp: refactor copy_regular_file
+  * ncp: walk_tree => top_level
+  * Move context into ncp
+  * ncp: refactor copy_symlink, copy_device and copy_special
+  * ncp: refactor copy_directory
+  * Refactor printing
+  * ncp: add apply_attrs() function
+  * io: time and ownership fix for symlinks
+  * io: mode fix for sockets, fifos and devices
+  * ncp: tweak
+  * ncp: refactor copy_sources, copy_tree and copy_entry
+  * io: add copy_file() function
+  * io: add rename() function
+  * io: tweak
+  * ncp: tweak
+  * ncp: collapse copy_source and walk_tree into copy_tree
+  * ncp: optimize copy_source & refactor walk_tree
+  * ncp: optimize walk_tree
+  * ncp: tweak
+  * io: don't return file - user can do that
+  * ncp: switch copy_sources to new interface
+  * io: fix double close
+  * io: add a way to release descriptors
+  * ncp: params need keep_links option
+  * ncp: use new directory_iterator
+  * io: add directory_iterator generator
+  * io: remove follow_symlinks() function
+  * Add testing framework
+  * ncp: fix symlink handling
+  * Remove --follow-dest-links option
+  * context: tweak
+  * ncp: fix default-constructed check
+  * io: non-existent files are not equal
+  * Move args back into pgm
+  * Move misc functions into io
+  * io: fix file ctors
+  * io: fix uid/gid
+  * ncp: fix
+  * Raise open file limit
+  * io: bring back empty() function
+  * io: add remove functions and replace old ones
+  * io: replace old create functions
+  * io: refactor file
+  * io: use bool to represent an existing file
+  * io: expose fd
+  * io: allow desc with negative fd (eg AT_FDCWD)
+  * io: add create functions
+  * io: add mode, time and owner setters
+  * io: add file ctor overload
+  * io: replace file with O_PATH-based version
+  * io: move types
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Sat, 12 Sep 2026 20:46:41 -0400
+
 ncp (0.5.1) unstable; urgency=medium
 
   * Prepare for 0.5.1
