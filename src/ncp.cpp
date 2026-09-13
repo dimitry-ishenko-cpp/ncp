@@ -170,6 +170,15 @@ bool create_directory(const node& target)
     else { verbose("create dir", target.file.path().string()); return true; }
 }
 
+bool create_generic(const node& source, const node& target, auto&& create_fn)
+{
+    std::error_code ec;
+    create_fn(source, target, ec);
+
+    if (ec) { fail("create", target, ec); return false; }
+    else { verbose("create", target); return true; }
+}
+
 bool remove_file(const node& node)
 {
     std::error_code ec;
@@ -450,10 +459,7 @@ auto copy_generic(node source, node target, auto&& match_fn, auto&& create_fn)
             return status::moved;
         }
 
-        std::error_code ec;
-        create_fn(source, target, ec);
-        if (ec) { fail("create", target, ec); return status::failed; }
-        else { verbose("create", target); }
+        if (!create_generic(source, target, create_fn)) return status::failed;
     }
 
     if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
