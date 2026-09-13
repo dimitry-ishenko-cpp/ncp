@@ -117,8 +117,6 @@ auto fail(auto&&... args)
     return status::failed;
 }
 
-void info(auto&&... args) { message(I, std::forward<decltype (args)>(args)...); }
-
 auto skip(auto&&... args)
 {
     message(I, std::forward<decltype (args)>(args)...);
@@ -1021,7 +1019,7 @@ try
 
         if (auto signal = ctx.exit_signal.exchange(0))
         {
-            info("received signal " + std::to_string(signal) + ", exiting");
+            message(I, "received signal " + std::to_string(signal) + ", exiting");
             code = interrupted;
         }
         else
@@ -1029,7 +1027,7 @@ try
             if (ctx.failed) code = copy_failed;
             else if (ctx.attr_failed) code = attr_failed;
 
-            if (ctx.attr_failed) info("some attrs could not be preserved");
+            if (ctx.attr_failed) message(W, "some attrs could not be preserved");
         }
 
         if (ctx.progress)
