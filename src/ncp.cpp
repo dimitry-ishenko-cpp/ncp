@@ -223,7 +223,7 @@ bool apply_attrs(const io::file& source, io::file& target, bool verbose = false)
     else return false;
 }
 
-auto copy_file(node source, node target)
+auto post_copy_file(node source, node target)
 {
     ctx.semaphore->acquire();
     asio::post(*ctx.pool, [source = std::move(source), target = std::move(target)] mutable
@@ -293,7 +293,7 @@ auto copy_top_level(node source, node target)
     ctx.files_total.fetch_add(1, std::memory_order_relaxed);
     ctx.bytes_total.fetch_add(source.file.size(), std::memory_order_relaxed);
 
-    return copy_file(std::move(source), std::move(target));
+    return post_copy_file(std::move(source), std::move(target));
 }
 
 auto copy_regular_file(node source, node target)
@@ -361,7 +361,7 @@ auto copy_regular_file(node source, node target)
             }
         }
 
-        return copy_file(std::move(source), std::move(target));
+        return post_copy_file(std::move(source), std::move(target));
     }
     else // already checked ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group
     {
@@ -418,7 +418,7 @@ auto copy_directory(node source, node target)
 
         io::create_directory(target.parent, target.name, ec);
         if (ec) return fail("create dir", target, ec);
-        verbose("create dir", target);
+        else verbose("create dir", target);
     }
 
     if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
