@@ -1,3 +1,11 @@
+ncp (0.6.1) unstable; urgency=medium
+
+  * Prepare for 0.6.1
+  * d/control: add missing build-deps
+  * Update README.md
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Sat, 12 Sep 2026 21:02:36 -0400
+
 ncp (0.6) unstable; urgency=medium
 
   * Prepare for 0.6
