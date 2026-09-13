@@ -157,40 +157,28 @@ bool copy_file(const node& source, const node& target, const io::progress_callba
     std::error_code ec;
     io::copy_file(source.file, target.parent, target.name, ec, cb);
 
-    if (ec)
-    {
-        fail("copy", source.file.path().string(), target.file.path().string(), ec);
-        return false;
-    }
-    else
-    {
-        if (ctx.verbose) message(V, "copy", source.file.path().string(), target.file.path().string());
-        return true;
-    }
+    if (ec) { fail("copy", source.file.path().string(), target.file.path().string(), ec); return false; }
+    else { verbose("copy", source.file.path().string(), target.file.path().string()); return true; }
 }
 
 bool remove_file(const node& node)
 {
     std::error_code ec;
     io::remove(node.parent, node.name, ec);
-    if (ec)
-    {
-        fail("remove", node.file.path().string());
-        return false;
-    }
-    else return true;
+    if (!ec) return true;
+
+    fail("remove", node.file.path().string());
+    return false;
 }
 
 bool rename_file(const node& source, const node& target)
 {
     std::error_code ec;
     io::rename(source.parent, source.name, target.parent, target.name, ec);
-    if (!ec)
-    {
-        if (ctx.verbose) message(V, "move", source.file.path().string(), target.file.path().string());
-        return true;
-    }
-    else return false;
+    if (ec) return false;
+
+    verbose("move", source.file.path().string(), target.file.path().string());
+    return true;
 }
 
 void apply_attr(std::string_view type,
@@ -249,13 +237,10 @@ bool apply_attrs(const io::file& source, io::file& target, bool verbose = false)
     if (ctx.keep_time) apply_attr("time", source, target, ec,
         [](auto&& s, auto&& t, std::error_code& ed) { t.time(s.time(), ed); }
     );
+    if (ec) return false;
 
-    if (!ec)
-    {
-        if (verbose && ctx.verbose) message(V, "attrs", target.path().string());
-        return true;
-    }
-    else return false;
+    if (verbose) ::verbose("attrs", target.path().string());
+    return true;
 }
 
 auto post_copy_file(node source, node target)
