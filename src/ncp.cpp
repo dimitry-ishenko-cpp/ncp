@@ -122,12 +122,6 @@ auto fail(auto&&... args)
     return status::failed;
 }
 
-auto skip(auto&&... args)
-{
-    message(I, std::forward<decltype (args)>(args)...);
-    return status::skipped;
-}
-
 void verbose(auto&&... args) { if (ctx.verbose) message(V, std::forward<decltype (args)>(args)...); }
 
 bool confirm(std::string_view action, const node& target)
@@ -490,7 +484,11 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
 
 auto copy_dispatch(node source, node target, bool top_level)
 {
-    if (target.file == source.file) return skip("skipping same file", source, target);
+    if (target.file == source.file)
+    {
+        message(I, "skipping same file", source.file.path().string(), target.file.path().string());
+        return status::skipped;
+    }
 
     switch (source.file.type())
     {
@@ -524,9 +522,12 @@ auto copy_dispatch(node source, node target, bool top_level)
                         io::create_block_device(t.parent, t.name, s.file.device_type(), ec);
                     }
                 );
-            else if (top_level)
-                return copy_top_level(std::move(source), std::move(target));
-            else return skip("skipping block dev", source);
+            else if (!top_level)
+            {
+                message(I, "skipping block dev", source.file.path().string());
+                return status::skipped;
+            }
+            else return copy_top_level(std::move(source), std::move(target));
 
         case io::file_type::character:
             if (ctx.keep_devices)
@@ -538,9 +539,12 @@ auto copy_dispatch(node source, node target, bool top_level)
                         io::create_char_device(t.parent, t.name, s.file.device_type(), ec);
                     }
                 );
-            else if (top_level)
-                return copy_top_level(std::move(source), std::move(target));
-            else return skip("skipping char dev", source);
+            else if (!top_level)
+            {
+                message(I, "skipping char dev", source);
+                return status::skipped;
+            }
+            else return copy_top_level(std::move(source), std::move(target));
 
         case io::file_type::fifo:
             if (ctx.keep_special)
@@ -548,9 +552,12 @@ auto copy_dispatch(node source, node target, bool top_level)
                     [](auto&& s, auto&& t) { return s.file.type() == t.file.type(); },
                     [](auto&& s, auto&& t, std::error_code& ec) { io::create_fifo(t.parent, t.name, ec); }
                 );
-            else if (top_level)
-                return copy_top_level(std::move(source), std::move(target));
-            else return skip("skipping fifo", source);
+            else if (!top_level)
+            {
+                message(I, "skipping fifo", source.file.path().string());
+                return status::skipped;
+            }
+            else return copy_top_level(std::move(source), std::move(target));
 
         case io::file_type::socket:
             if (ctx.keep_special)
@@ -558,9 +565,12 @@ auto copy_dispatch(node source, node target, bool top_level)
                     [](auto&& s, auto&& t) { return s.file.type() == t.file.type(); },
                     [](auto&& s, auto&& t, std::error_code& ec) { io::create_socket(t.parent, t.name, ec); }
                 );
-            else if (top_level)
-                return copy_top_level(std::move(source), std::move(target));
-            else return skip("skipping socket", source);
+            else if (!top_level)
+            {
+                message(I, "skipping socket", source.file.path().string());
+                return status::skipped;
+            }
+            else return copy_top_level(std::move(source), std::move(target));
 
         case io::file_type::not_found:
             return fail("non-extant", source);
@@ -574,7 +584,11 @@ void copy_tree(node source, node target, bool top_level)
 {
     if (source.file.is_directory())
     {
-        if (!ctx.recursive) { skip("skipping dir", source); return; }
+        if (!ctx.recursive)
+        {
+            message(I, "skipping dir", source.file.path().string());
+            return;
+        }
 
         std::error_code ec;
         // pass copies of source and target, as we need them below
