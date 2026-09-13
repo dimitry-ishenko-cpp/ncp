@@ -173,7 +173,7 @@ void file::owner(io::user_id uid, io::group_id gid, std::error_code& ec) noexcep
 void copy_file(const file& source, const file& target_parent, const path& target_name,
     std::error_code& ec, const progress_callback& cb)
 {
-    constexpr file_size chunk_size = 4194304; // 4MiB
+    constexpr file_size block_size = 4194304; // 4MiB
 
     auto tick = [&](file_size copied)
     {
@@ -186,19 +186,22 @@ void copy_file(const file& source, const file& target_parent, const path& target
     desc in{ ::open(proxy_path(source.fd()).c_str(), O_RDONLY | O_CLOEXEC) };
     if (!in) { ec = error_code(errno); return; }
 
-    desc out{ ::openat(fd_or_cwd(target_parent), target_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666) };
+    desc out{ ::openat(fd_or_cwd(target_parent), target_name.c_str(),
+        O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666)
+    };
     if (!out) { ec = error_code(errno); return; }
 
     bool copying = true;
 
     while (copying)
     {
-        auto copied = ::copy_file_range(in.get(), nullptr, out.get(), nullptr, chunk_size, 0);
+        auto copied = ::copy_file_range(in.get(), nullptr, out.get(), nullptr, block_size, 0);
         if (copied < 0)
         {
             if (errno == EINTR) continue;
             // not supported
-            if (errno == EINVAL || errno == ENOSYS || errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
+            if (errno == EINVAL  || errno == ENOSYS ||
+                errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
 
             ec = error_code(errno);
             return;
@@ -209,7 +212,7 @@ void copy_file(const file& source, const file& target_parent, const path& target
 
     while (copying)
     {
-        auto copied = ::sendfile(out.get(), in.get(), nullptr, chunk_size);
+        auto copied = ::sendfile(out.get(), in.get(), nullptr, block_size);
         if (copied < 0)
         {
             if (errno == EINTR) continue;
@@ -225,10 +228,10 @@ void copy_file(const file& source, const file& target_parent, const path& target
 
     if (copying)
     {
-        auto buf = std::make_unique_for_overwrite<char[]>(chunk_size);
+        auto buf = std::make_unique_for_overwrite<char[]>(block_size);
         do
         {
-            auto read = ::read(in.get(), buf.get(), chunk_size);
+            auto read = ::read(in.get(), buf.get(), block_size);
             if (read < 0)
             {
                 if (errno == EINTR) continue;
