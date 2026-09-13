@@ -161,6 +161,15 @@ bool copy_file(const node& source, const node& target, const io::progress_callba
     else { verbose("copy", source.file.path().string(), target.file.path().string()); return true; }
 }
 
+bool create_directory(const node& target)
+{
+    std::error_code ec;
+    io::create_directory(target.parent, target.name, ec);
+
+    if (ec) { fail("create dir", target.file.path().string(), ec); return false; }
+    else { verbose("create dir", target.file.path().string()); return true; }
+}
+
 bool remove_file(const node& node)
 {
     std::error_code ec;
@@ -393,9 +402,7 @@ auto copy_directory(node source, node target)
             return status::moved;
         }
 
-        io::create_directory(target.parent, target.name, ec);
-        if (ec) return fail("create dir", target, ec);
-        else verbose("create dir", target);
+        if (!create_directory(target)) return status::failed;
     }
 
     if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
