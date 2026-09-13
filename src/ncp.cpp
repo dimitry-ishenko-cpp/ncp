@@ -283,7 +283,6 @@ auto post_copy_file(node source, node target)
         }
 
         ctx.add_files_copied(1);
-
         if (ctx.move && source.file.is_regular_file()) remove_file(source);
     });
 
@@ -328,7 +327,6 @@ auto copy_regular_file(node source, node target)
             if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
 
             if (!remove_file(target)) return status::failed;
-
             create = true;
         }
         else
@@ -366,25 +364,18 @@ auto copy_regular_file(node source, node target)
 
     if (create)
     {
-        if (ctx.move)
+        if (ctx.move && rename_file(source, target))
         {
-            io::rename(source.parent, source.name, target.parent, target.name, ec);
-            if (!ec)
-            {
-                ctx.add_files_bytes_copied(1, source.file.size());
-                verbose("move", source, target);
-                return status::moved;
-            }
+            ctx.add_files_bytes_copied(1, source.file.size());
+            return status::moved;
         }
-
-        return post_copy_file(std::move(source), std::move(target));
+        else return post_copy_file(std::move(source), std::move(target));
     }
     else // already checked ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group
     {
         if (!apply_attrs(source.file, target.file, true)) return status::failed;
 
         ctx.add_files_bytes_copied(1, source.file.size());
-
         if (ctx.move) remove_file(source);
 
         return status::unchanged;
@@ -404,7 +395,6 @@ auto copy_directory(node source, node target)
             if (ctx.interactive && !confirm("replace", target)) return status::skipped;
 
             if (!remove_file(target)) return status::failed;
-            
             create = true;
         }
         else if (ctx.update_ == update::none) return status::unchanged;
@@ -462,7 +452,6 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
             if (ctx.interactive && !confirm("replace", target)) return status::skipped;
 
             if (!remove_file(target)) return status::failed;
-
             create = true;
         }
         else if (ctx.update_ == update::none) return status::unchanged;
@@ -501,7 +490,6 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
     }
 
     ctx.add_files_copied(1);
-
     if (ctx.move) remove_file(source);
 
     return create ? status::copied : status::unchanged;
