@@ -280,10 +280,10 @@ auto post_copy_file(node source, node target)
 
         if (ctx.exiting()) return;
 
-        copy_file(source, target, source.file.size()
+        if (!copy_file(source, target, source.file.size()
             ? [](io::file_size b) { ctx.add_bytes_copied(b); return !ctx.exiting(); }
             : [](io::file_size b) { ctx.add_bytes_total(b); ctx.add_bytes_copied(b); return !ctx.exiting(); }
-        );
+        )) return;
 
         if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
         {
