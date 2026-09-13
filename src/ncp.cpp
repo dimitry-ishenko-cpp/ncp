@@ -35,7 +35,7 @@ enum class status { failed, copied, moved, unchanged, skipped };
 enum class unlink { never, always, auto_ };
 enum class update { none, all, older, changed, size, };
 
-struct
+struct context
 {
     bool can_chown = false;
     io::user_id uid = -1;
@@ -67,8 +67,18 @@ struct
     std::atomic<bool> failed{ false }, attr_failed{ false };
     bool copy_all = false, skip_all = false;
 
-    std::atomic<long> files_total{0}, files_copied{0};
-    std::atomic<long> bytes_total{0}, bytes_copied{0};
+    std::atomic<int> files_total{0}, files_copied{0};
+    std::atomic<io::file_size> bytes_total{0}, bytes_copied{0};
+
+    inline void add_files_total(int n) noexcept { files_total.fetch_add(n, std::memory_order_relaxed); }
+    inline void add_files_copied(int n) noexcept { files_copied.fetch_add(n, std::memory_order_relaxed); }
+
+    inline void add_bytes_total(io::file_size b) noexcept { bytes_total.fetch_add(b, std::memory_order_relaxed); }
+    inline void add_bytes_copied(io::file_size b) noexcept { bytes_copied.fetch_add(b, std::memory_order_relaxed); }
+
+    inline void add_files_bytes_total(int n, io::file_size b) noexcept { add_files_total(n); add_bytes_total(b); }
+    inline void add_files_bytes_copied(int n, io::file_size b) noexcept { add_files_copied(n); add_bytes_copied(b); }
+
     double percent_copied = 0;
 
     std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
@@ -240,13 +250,12 @@ auto post_copy_file(node source, node target)
         if (ctx.quit.load(std::memory_order_relaxed)) return;
 
         auto cb = source.file.size()
-            ? [](io::file_size chunk) {
-                ctx.bytes_copied.fetch_add(chunk, std::memory_order_relaxed);
+            ? [](io::file_size b) {
+                ctx.add_bytes_copied(b);
                 return !ctx.quit.load(std::memory_order_relaxed);
             }
-            : [](io::file_size chunk) {
-                ctx.bytes_total.fetch_add(chunk, std::memory_order_relaxed);
-                ctx.bytes_copied.fetch_add(chunk, std::memory_order_relaxed);
+            : [](io::file_size b) {
+                ctx.add_bytes_total(b); ctx.add_bytes_copied(b);
                 return !ctx.quit.load(std::memory_order_relaxed);
             };
 
@@ -264,7 +273,7 @@ auto post_copy_file(node source, node target)
             if (!apply_attrs(source.file, target.file)) return;
         }
 
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        ctx.add_files_copied(1);
 
         if (ctx.move && source.file.is_regular_file()) remove_file(source);
     });
@@ -292,8 +301,7 @@ auto copy_top_level(node source, node target)
         }
     }
 
-    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
-    ctx.bytes_total.fetch_add(source.file.size(), std::memory_order_relaxed);
+    ctx.add_files_bytes_total(1, source.file.size());
 
     return post_copy_file(std::move(source), std::move(target));
 }
@@ -345,8 +353,7 @@ auto copy_regular_file(node source, node target)
     }
     else create = true;
 
-    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
-    ctx.bytes_total.fetch_add(source.file.size(), std::memory_order_relaxed);
+    ctx.add_files_bytes_total(1, source.file.size());
 
     if (create)
     {
@@ -355,8 +362,7 @@ auto copy_regular_file(node source, node target)
             io::rename(source.parent, source.name, target.parent, target.name, ec);
             if (!ec)
             {
-                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-                ctx.bytes_copied.fetch_add(source.file.size(), std::memory_order_relaxed);
+                ctx.add_files_bytes_copied(1, source.file.size());
                 verbose("move", source, target);
                 return status::moved;
             }
@@ -368,8 +374,7 @@ auto copy_regular_file(node source, node target)
     {
         if (!apply_attrs(source.file, target.file, true)) return status::failed;
 
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
-        ctx.bytes_copied.fetch_add(source.file.size(), std::memory_order_relaxed);
+        ctx.add_files_bytes_copied(1, source.file.size());
 
         if (ctx.move) remove_file(source);
 
@@ -397,7 +402,7 @@ auto copy_directory(node source, node target)
     }
     else create = true;
 
-    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+    ctx.add_files_total(1);
 
     if (create)
     {
@@ -406,7 +411,7 @@ auto copy_directory(node source, node target)
             io::rename(source.parent, source.name, target.parent, target.name, ec);
             if (!ec)
             {
-                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+                ctx.add_files_copied(1);
                 verbose("move", source, target);
                 return status::moved;
             }
@@ -427,7 +432,7 @@ auto copy_directory(node source, node target)
 
         ctx.dir_attrs.emplace_back(std::move(source.file), std::move(target.file));
     }
-    else ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+    else ctx.add_files_copied(1);
 
     if (ctx.move) ctx.rmdirs.emplace_back(source.parent, std::move(source.name));
 
@@ -455,7 +460,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
     }
     else create = true;
 
-    ctx.files_total.fetch_add(1, std::memory_order_relaxed);
+    ctx.add_files_total(1);
 
     if (create)
     {
@@ -464,7 +469,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
             io::rename(source.parent, source.name, target.parent, target.name, ec);
             if (!ec)
             {
-                ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+                ctx.add_files_copied(1);
                 verbose("move", source, target);
                 return status::moved;
             }
@@ -486,7 +491,7 @@ auto copy_generic(node source, node target, MatchFn&& match_fn, CreateFn&& creat
         if (!apply_attrs(source.file, target.file, !create)) return status::failed;
     }
 
-    ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+    ctx.add_files_copied(1);
 
     if (ctx.move) remove_file(source);
 
@@ -671,7 +676,7 @@ void process_dirs()
     for (auto&& [source, target] : std::views::reverse(ctx.dir_attrs))
     {
         if (!apply_attrs(source, target, true)) continue;
-        ctx.files_copied.fetch_add(1, std::memory_order_relaxed);
+        ctx.add_files_copied(1);
     }
 
     for (auto&& [parent, name] : std::views::reverse(ctx.rmdirs))
