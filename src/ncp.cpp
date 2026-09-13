@@ -105,28 +105,33 @@ template <> struct formatter<  node  > : formatter<string_view> {
 };
 }
 
+constexpr auto E = "E:";
+constexpr auto I = "I:";
+constexpr auto V = "V:";
+constexpr auto W = "W:";
+
 void attr_fail(auto&&... args)
 {
-    if (ctx.verbose) message("E:", std::forward<decltype (args)>(args)...);
+    if (ctx.verbose) message(W, std::forward<decltype (args)>(args)...);
     ctx.attr_failed.store(true, std::memory_order_relaxed);
 }
 
 auto fail(auto&&... args)
 {
-    message("E:", std::forward<decltype (args)>(args)...);
+    message(E, std::forward<decltype (args)>(args)...);
     ctx.failed.store(true, std::memory_order_relaxed);
     return status::failed;
 }
 
-void info(auto&&... args) { message("I:", std::forward<decltype (args)>(args)...); }
+void info(auto&&... args) { message(I, std::forward<decltype (args)>(args)...); }
 
 auto skip(auto&&... args)
 {
-    message("I:", std::forward<decltype (args)>(args)...);
+    message(I, std::forward<decltype (args)>(args)...);
     return status::skipped;
 }
 
-void verbose(auto&&... args) { if (ctx.verbose) message("V:", std::forward<decltype (args)>(args)...); }
+void verbose(auto&&... args) { if (ctx.verbose) message(V, std::forward<decltype (args)>(args)...); }
 
 bool confirm(std::string_view action, const node& target)
 {
