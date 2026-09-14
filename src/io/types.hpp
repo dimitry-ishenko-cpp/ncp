@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <format>
 
 #include <sys/types.h> // dev_t, gid_t, ino_t, uid_t
 
@@ -31,5 +32,18 @@ using user_id = uid_t;
 using device = dev_t;
 using index_node = ino_t;
 using hardlink_count = std::uintmax_t;
+
+}
+
+namespace std
+{
+
+template <>
+struct formatter<io::path> : formatter<string_view>
+{
+    constexpr auto format(const io::path& path, format_context& ctx) const {
+        return formatter<string_view>::format(path.string(), ctx);
+    }
+};
 
 }
