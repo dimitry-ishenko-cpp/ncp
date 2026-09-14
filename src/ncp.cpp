@@ -50,6 +50,10 @@ struct context
     bool keep_links = false;
     bool keep_special = false;
 
+    constexpr bool appy_attrs() const noexcept {
+        return keep_group || keep_mode || keep_time || keep_user;
+    }
+
     bool move = false;
     bool progress = false;
     bool recursive = false;
@@ -63,7 +67,7 @@ struct context
 
     std::atomic<int> exit_signal{0};
     std::atomic<bool> exit{ false };
-    inline bool exiting() noexcept { return exit.load(std::memory_order_relaxed); }
+    inline bool exiting() const noexcept { return exit.load(std::memory_order_relaxed); }
 
     std::atomic<bool> failed{ false }, attr_failed{ false };
     bool copy_all = false, skip_all = false;
@@ -275,7 +279,7 @@ auto post_copy_file(node source, node target)
             : [](io::file_size b) { ctx.add_bytes_total(b); ctx.add_bytes_copied(b); return !ctx.exiting(); }
         )) return;
 
-        if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
+        if (ctx.appy_attrs())
         {
             std::error_code ec;
             target.file = io::file{target.parent, target.name, ec};
@@ -349,7 +353,7 @@ auto copy_regular_file(node source, node target)
             if (create) {
                 if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
             }
-            else if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group) {
+            else if (ctx.appy_attrs()) {
                 if (ctx.interactive && !confirm("update", target)) return status::skipped;
             }
             else return status::unchanged;
@@ -410,7 +414,7 @@ auto copy_directory(node source, node target)
         if (!create_directory(target)) return status::failed;
     }
 
-    if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
+    if (ctx.appy_attrs())
     {
         if (create)
         {
@@ -459,7 +463,7 @@ auto copy_generic(node source, node target, auto&& match_fn, auto&& create_fn)
         if (!create_generic(source, target, create_fn)) return status::failed;
     }
 
-    if (ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group)
+    if (ctx.appy_attrs())
     {
         if (create)
         {
