@@ -35,6 +35,13 @@ enum class status { failed, copied, moved, unchanged, skipped };
 enum class unlink { never, always, auto_ };
 enum class update { none, all, older, changed, size, };
 
+struct node
+{
+    io::file parent;
+    io::path name;
+    io::file file;
+};
+
 struct context
 {
     bool can_chown = false;
@@ -90,20 +97,12 @@ struct context
     long last_bytes = 0;
     double speed = 0;
 
-    struct dir_attr_entry { io::file source, target; };
+    struct dir_attr_entry { node source, target; };
     std::vector<dir_attr_entry> dir_attrs;
 
-    struct rmdir_entry { io::file parent; io::path name; };
-    std::vector<rmdir_entry> rmdirs;
+    std::vector<node> rmdirs;
 }
 ctx;
-
-struct node
-{
-    io::file parent;
-    io::path name;
-    io::file file;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace std
@@ -202,35 +201,34 @@ bool rename_file(const node& source, const node& target)
     return true;
 }
 
-void apply_attr(std::string_view type,
-    const io::file& source, io::file& target, std::error_code& ec, auto&& apply_fn)
+void apply_attr(std::string_view type, const node& source, node& target, std::error_code& ec, auto&& apply_fn)
 {
     constexpr auto not_permitted = std::errc::operation_not_permitted;
     constexpr auto not_supported = std::errc::not_supported;
 
     std::error_code ed;
-    apply_fn(source, target, ed);
+    apply_fn(source.file, target.file, ed);
     if (ed)
     {
         if (ed == not_permitted || ed == not_supported)
         {
-            if (ctx.verbose) message(W, type, target.path().string(), ed);
+            if (ctx.verbose) message(W, type, target.file.path().string(), ed);
             ctx.attr_failed.store(true, std::memory_order_relaxed);
         }
-        else if (!ec) fail(type, target.path().string(), ec = ed);
+        else if (!ec) fail(type, target.file.path().string(), ec = ed);
     }
 }
 
-bool apply_attrs(const io::file& source, io::file& target, bool verbose = false)
+bool apply_attrs(const node& source, node& target, bool verbose = false)
 {
-    io::mode mode = source.mode();
+    io::mode mode = source.file.mode();
 
     constexpr auto none = -1;
     io::user_id uid = none; io::group_id gid = none;
 
     if (ctx.keep_user)
     {
-        if (!ctx.can_chown && source.user_id() != ctx.uid)
+        if (!ctx.can_chown && source.file.user_id() != ctx.uid)
         {
             if (ctx.keep_mode)
             {
@@ -242,9 +240,9 @@ bool apply_attrs(const io::file& source, io::file& target, bool verbose = false)
                 }
             }
         }
-        else uid = source.user_id();
+        else uid = source.file.user_id();
     }
-    if (ctx.keep_group) gid = source.group_id();
+    if (ctx.keep_group) gid = source.file.group_id();
 
     std::error_code ec;
 
@@ -260,7 +258,7 @@ bool apply_attrs(const io::file& source, io::file& target, bool verbose = false)
     );
     if (ec) return false;
 
-    if (verbose) ::verbose("attrs", target.path().string());
+    if (verbose) ::verbose("attrs", target.file.path().string());
     return true;
 }
 
@@ -284,7 +282,7 @@ auto post_copy_file(node source, node target)
             target.file = io::file{target.parent, target.name, ec};
             if (ec) { fail("access", target, ec); return; }
 
-            if (!apply_attrs(source.file, target.file)) return;
+            if (!apply_attrs(source, target)) return;
         }
 
         ctx.add_files_copied(1);
@@ -373,7 +371,7 @@ auto copy_regular_file(node source, node target)
     }
     else // already checked ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group
     {
-        if (!apply_attrs(source.file, target.file, true)) return status::failed;
+        if (!apply_attrs(source, target, true)) return status::failed;
 
         ctx.add_files_bytes_copied(1, source.file.size());
         if (ctx.move) remove_file(source);
@@ -422,11 +420,11 @@ auto copy_directory(node source, node target)
             if (ec) return fail("access", target, ec);
         }
 
-        ctx.dir_attrs.emplace_back(std::move(source.file), std::move(target.file));
+        ctx.dir_attrs.emplace_back(ctx.move ? source : std::move(source), std::move(target));
     }
     else ctx.add_files_copied(1);
 
-    if (ctx.move) ctx.rmdirs.emplace_back(source.parent, std::move(source.name));
+    if (ctx.move) ctx.rmdirs.push_back(std::move(source));
 
     return create ? status::copied : status::unchanged;
 }
@@ -471,7 +469,7 @@ auto copy_generic(node source, node target, auto&& match_fn, auto&& create_fn)
             if (ec) return fail("access", target, ec);
         }
 
-        if (!apply_attrs(source.file, target.file, !create)) return status::failed;
+        if (!apply_attrs(source, target, !create)) return status::failed;
     }
 
     ctx.add_files_copied(1);
@@ -676,11 +674,11 @@ void process_dirs()
         ctx.add_files_copied(1);
     }
 
-    for (auto&& [parent, name] : std::views::reverse(ctx.rmdirs))
+    for (auto&& node : std::views::reverse(ctx.rmdirs))
     {
         std::error_code ec;
-        io::remove_directory(parent, name, ec);
-        if (ec) fail("remove dir", (parent.path() / name).string(), ec);
+        io::remove_directory(node.parent, node.name, ec);
+        if (ec) fail("remove dir", node.file.path().string(), ec);
     }
 }
 
