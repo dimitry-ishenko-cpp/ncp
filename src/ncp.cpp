@@ -35,7 +35,7 @@ constexpr auto I = "I:";
 constexpr auto V = "V:";
 constexpr auto W = "W:";
 
-enum class status { failed, copied, moved, unchanged, skipped };
+enum class status { failed, skipped, moved, success };
 enum class unlink { never, always, auto_ };
 enum class update { none, all, older, changed, size, };
 
@@ -273,6 +273,7 @@ bool apply_attrs(const node& source, node& target, bool verbose = false)
     return true;
 }
 
+////////////////////////////////////////////////////////////////////////////////
 auto post_copy_file(node& source, node& target)
 {
     ctx.semaphore->acquire();
@@ -298,7 +299,7 @@ auto post_copy_file(node& source, node& target)
         if (ctx.move && source.file.is_regular_file()) remove_file(source);
     });
 
-    return status::copied;
+    return status::success;
 }
 
 auto copy_top_level(node& source, node& target)
@@ -314,7 +315,7 @@ auto copy_top_level(node& source, node& target)
         }
         else
         {
-            if (ctx.update_ == update::none) return status::unchanged;
+            if (ctx.update_ == update::none) return status::success;
             if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
         }
     }
@@ -342,10 +343,10 @@ auto copy_regular_file(node& source, node& target)
         {
             switch (ctx.update_)
             {
-                case update::none: return status::unchanged;
+                case update::none: return status::success;
                 case update::older:
                     if (target.file.time() < source.file.time()) create = true;
-                    else return status::unchanged; // don't touch newer files
+                    else return status::success; // don't touch newer files
                     break;
                 case update::changed: 
                     create = target.file.size() != source.file.size() || target.file.time() != source.file.time();
@@ -362,7 +363,7 @@ auto copy_regular_file(node& source, node& target)
             else if (ctx.appy_attrs()) {
                 if (ctx.interactive && !confirm("update", target)) return status::skipped;
             }
-            else return status::unchanged;
+            else return status::success;
         }
     }
     else create = true;
@@ -385,7 +386,7 @@ auto copy_regular_file(node& source, node& target)
         ctx.add_files_bytes_copied(1, source.file.size());
         if (ctx.move) remove_file(source);
 
-        return status::unchanged;
+        return status::success;
     }
 }
 
@@ -403,7 +404,7 @@ auto copy_directory(node& source, node& target)
             if (!remove_file(target)) return status::failed;
             create = true;
         }
-        else if (ctx.update_ == update::none) return status::unchanged;
+        else if (ctx.update_ == update::none) return status::success;
     }
     else create = true;
 
@@ -426,7 +427,7 @@ auto copy_directory(node& source, node& target)
 
     if (ctx.move) ctx.rmdirs.push_back(source);
 
-    return create ? status::copied : status::unchanged;
+    return status::success;
 }
 
 auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
@@ -443,7 +444,7 @@ auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
             if (!remove_file(target)) return status::failed;
             create = true;
         }
-        else if (ctx.update_ == update::none) return status::unchanged;
+        else if (ctx.update_ == update::none) return status::success;
     }
     else create = true;
 
@@ -469,7 +470,7 @@ auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
     ctx.add_files_copied(1);
     if (ctx.move) remove_file(source);
 
-    return create ? status::copied : status::unchanged;
+    return status::success;
 }
 
 auto copy_dispatch(node& source, node& target, bool top_level)
@@ -577,8 +578,7 @@ void copy_tree(node& source, node& target, bool top_level)
     {
         if (ctx.recursive)
         {
-            auto status = copy_dispatch(source, target, top_level);
-            if (status == status::copied || status == status::unchanged)
+            if (copy_dispatch(source, target, top_level) == status::success)
             {
                 for (auto&& name : io::directory_iterator(source.file))
                     if (name)
