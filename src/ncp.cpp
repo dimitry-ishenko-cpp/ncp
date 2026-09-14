@@ -44,6 +44,15 @@ struct node
     io::file parent;
     io::path name;
     io::file file;
+
+    node() noexcept = default;
+    node(io::file parent, io::path name, bool follow_links = true) noexcept :
+        parent{std::move(parent)}, name{std::move(name)}
+    { reopen(follow_links); }
+
+    bool reopen(bool follow_links = true) noexcept;
+
+    auto empty() const noexcept { return file.empty(); }
 };
 
 struct context
@@ -117,6 +126,16 @@ struct context
     std::vector<node> rmdirs;
 }
 ctx;
+
+bool node::reopen(bool follow_links) noexcept
+{
+    std::error_code ec;
+    file = io::file{parent, name, follow_links ? io::follow_links : io::no_follow_links, ec};
+    if (!ec) return true;
+
+    ctx.fail("access", file.path(), ec);
+    return false;
+}
 
 bool confirm(std::string_view action, const node& target)
 {
@@ -270,10 +289,7 @@ auto post_copy_file(node source, node target)
 
         if (ctx.appy_attrs())
         {
-            std::error_code ec;
-            target.file = io::file{target.parent, target.name, ec};
-            if (ec) { ctx.fail("access", target.file.path(), ec); return; }
-
+            if (!target.reopen()) return;
             if (!apply_attrs(source, target)) return;
         }
 
@@ -361,7 +377,7 @@ auto copy_regular_file(node source, node target)
         }
         else return post_copy_file(std::move(source), std::move(target));
     }
-    else // already checked ctx.keep_time || ctx.keep_mode || ctx.keep_user || ctx.keep_group
+    else // already checked ctx.appy_attrs()
     {
         if (!apply_attrs(source, target, true)) return status::failed;
 
@@ -405,13 +421,8 @@ auto copy_directory(node source, node target)
 
     if (ctx.appy_attrs())
     {
-        if (create)
-        {
-            std::error_code ec;
-            target.file = io::file{target.parent, target.name, io::no_follow_links, ec};
-            if (ec) { ctx.fail("access", target.file.path(), ec); return status::failed; }
-        }
-
+        if (create && !target.reopen(io::no_follow_links)) return status::failed;
+        // make a copy if we also need it for ctx.rmdirs
         ctx.dir_attrs.emplace_back(ctx.move ? source : std::move(source), std::move(target));
     }
     else ctx.add_files_copied(1);
@@ -454,13 +465,7 @@ auto copy_generic(node source, node target, auto&& match_fn, auto&& create_fn)
 
     if (ctx.appy_attrs())
     {
-        if (create)
-        {
-            std::error_code ec;
-            target.file = io::file{target.parent, target.name, io::no_follow_links, ec};
-            if (ec) { ctx.fail("access", target.file.path(), ec); return status::failed; }
-        }
-
+        if (create && !target.reopen(io::no_follow_links)) return status::failed;
         if (!apply_attrs(source, target, !create)) return status::failed;
     }
 
@@ -573,46 +578,37 @@ void copy_tree(node source, node target, bool top_level)
 {
     if (source.file.is_directory())
     {
-        if (!ctx.recursive)
+        if (ctx.recursive)
         {
-            message(I, "skipping dir", source.file.path());
-            return;
+            // pass copies of the source and target, as we need them below
+            auto status = copy_dispatch(source, target, top_level);
+            switch (status)
+            {
+                case status::copied:
+                    // reread the target, as it has changed
+                    if (!target.reopen(io::no_follow_links)) return;
+                    // fallthrough
+
+                case status::unchanged:
+                    for (auto&& name : io::directory_iterator(source.file))
+                        if (name)
+                        {
+                            if (ctx.exiting()) break;
+
+                            node child_source{ source.file, *name, ctx.follow_links };
+                            if (child_source.empty()) continue;
+
+                            node child_target{ target.file, *name, !child_source.file.is_symlink() };
+                            if (child_target.empty()) continue;
+
+                            copy_tree(std::move(child_source), std::move(child_target), false);
+                        }
+                        else ctx.fail("read dir", source.file.path(), name.error());
+
+                default:;
+            }
         }
-
-        std::error_code ec;
-        // pass copies of the source and target, as we need them below
-        auto status = copy_dispatch(source, target, top_level);
-
-        switch (status)
-        {
-            case status::copied:
-                // reread the target, as it has changed
-                target.file = io::file{target.parent, target.name, io::no_follow_links, ec};
-                if (ec) { ctx.fail("access", target.file.path(), ec); return; }
-                // fallthrough
-
-            case status::unchanged:
-                for (auto&& name : io::directory_iterator(source.file))
-                    if (name)
-                    {
-                        if (ctx.exiting()) break;
-
-                        node child_source{ .parent = source.file, .name = *name };
-                        auto follow_links = ctx.follow_links ? io::follow_links : io::no_follow_links;
-                        child_source.file = io::file{source.file, *name, follow_links, ec};
-                        if (ec) { ctx.fail("access", child_source.file.path(), ec); continue; }
-
-                        node child_target{ .parent = target.file, .name = *name };
-                        follow_links = child_source.file.is_symlink() ? io::no_follow_links : io::follow_links;
-                        child_target.file = io::file{target.file, *name, follow_links, ec};
-                        if (ec) { ctx.fail("access", child_target.file.path(), ec); continue; }
-
-                        copy_tree(std::move(child_source), std::move(child_target), false);
-                    }
-                    else ctx.fail("read dir", source.file.path(), name.error());
-
-            default:;
-        }
+        else message(I, "skipping dir", source.file.path());
     }
     else copy_dispatch(std::move(source), std::move(target), top_level);
 }
@@ -627,13 +623,8 @@ void copy_sources(std::vector<node> sources, node target)
 
             if (source.name.has_filename()) // rsync-style behavior
             {
-                std::error_code ec;
-                auto name = source.name.filename();
-
-                node new_target{ .parent = target.file, .name = name };
-                auto follow_links = source.file.is_symlink() ? io::no_follow_links : io::follow_links;
-                new_target.file = io::file{target.file, name, follow_links, ec};
-                if (ec) { ctx.fail("access", new_target.file.path(), ec); continue; }
+                node new_target{ target.file, source.name.filename(), !source.file.is_symlink() };
+                if (new_target.empty()) continue;
 
                 copy_tree(std::move(source), std::move(new_target), true);
             }
@@ -647,13 +638,9 @@ void copy_sources(std::vector<node> sources, node target)
     }
     else if (sources.size() == 1)
     {
-        if (sources.front().file.is_symlink()) // --keep-links
-        {
-            std::error_code ec;
-            target.file = io::file{target.parent, target.name, io::no_follow_links, ec};
-            if (ec) { ctx.fail("access", target.file.path(), ec); return; }
-        }
-        copy_tree(std::move(sources.front()), std::move(target), true);
+        auto& source = sources.front();
+        if (source.file.is_symlink() && !target.reopen(io::no_follow_links)) return;
+        copy_tree(std::move(source), std::move(target), true);
     }
     else if (sources.size() > 1)
         ctx.fail("copy", target.file.path(), std::make_error_code(std::errc::not_a_directory));
@@ -933,19 +920,14 @@ try
             else throw pgm::invalid_argument{ "bad --update value '" + when + "'" };
         }
 
-        std::error_code ec;
         const io::file cwd;
-
         std::vector<node> sources;
-        node target{ .parent = cwd };
+        node target;
 
         for (auto&& path : args["SOURCE"].values())
         {
-            node source{ .parent = cwd, .name = path };
-            auto follow_links = ctx.follow_links ? io::follow_links : io::no_follow_links;
-            source.file = io::file{source.name, follow_links, ec};
-            if (ec) ctx.fail("access", source.file.path(), ec);
-            else sources.push_back(std::move(source));
+            node source{ cwd, path, ctx.follow_links };
+            if (!source.empty()) sources.push_back(std::move(source));
         }
 
         auto&& destination_path = args["DESTINATION"];
@@ -957,28 +939,24 @@ try
             // but if --target was specified that value belongs in SOURCES
             if (destination_path)
             {
-                node source{ .parent = cwd, .name = destination_path.value() };
-                auto follow_links = ctx.follow_links ? io::follow_links : io::no_follow_links;
-                source.file = io::file{source.name, follow_links, ec};
-                if (ec) ctx.fail("access", source.file.path(), ec);
-                else sources.push_back(std::move(source));
+                node source{ cwd, destination_path.value(), ctx.follow_links };
+                if (!source.empty()) sources.push_back(std::move(source));
             }
 
-            target.name = target_path.value();
-            target.file = io::file{target.name, io::follow_links, ec};
-            if (ec) throw io::exception{"access", target.name, ec};
+            target = node{ cwd, target_path.value(), io::follow_links };
+            if (target.empty()) throw pgm::invalid_argument{"target path"};
         }
         else if (destination_path)
         {
-            target.name = destination_path.value();
-            target.file = io::file{target.name, io::follow_links, ec};
-            if (ec) throw io::exception{"access", target.name, ec};
+            target = node{ cwd, destination_path.value(), io::follow_links };
+            if (target.empty()) throw pgm::invalid_argument{"destination path"};
         }
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
         ////////////////////
         io::set_signal_callback([](int signal) { ctx.exit_signal = signal; ctx.exit = true; });
 
+        std::error_code ec;
         auto max = io::max_open_file_limit(ec);
         if (!ec) io::set_open_file_limit(max, ec);
 
