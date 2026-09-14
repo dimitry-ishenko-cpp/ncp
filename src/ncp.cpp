@@ -196,7 +196,7 @@ bool remove_file(const node& node)
 {
     std::error_code ec;
     io::remove(node.parent, node.name, ec);
-    if (!ec) return true;
+    if (!ec) return true; // quiet success
 
     ctx.fail("remove", node.file.path(), ec);
     return false;
@@ -206,7 +206,7 @@ bool rename_file(const node& source, const node& target)
 {
     std::error_code ec;
     io::rename(source.parent, source.name, target.parent, target.name, ec);
-    if (ec) return false;
+    if (ec) return false; // quiet failure
 
     ctx.verbose("move", source.file.path(), target.file.path());
     return true;
@@ -230,7 +230,7 @@ void apply_attr(std::string_view type, const node& source, node& target, std::er
     }
 }
 
-bool apply_attrs(const node& source, node& target, bool verbose = false)
+bool apply_attrs(const node& source, node& target, bool announce = false)
 {
     io::mode mode = source.file.mode();
 
@@ -259,17 +259,17 @@ bool apply_attrs(const node& source, node& target, bool verbose = false)
 
     // owner must be first, as it will strip suid/sgid bits; time must be last
     if (ctx.keep_user || ctx.keep_group) apply_attr("owner", source, target, ec,
-        [uid, gid](auto&& s, auto&& t, std::error_code& ed) { t.owner(uid, gid, ed); }
+        [uid, gid](auto&&, auto&& tgt, std::error_code& ed) { tgt.owner(uid, gid, ed); }
     );
     if (ctx.keep_mode) apply_attr("mode", source, target, ec,
-        [mode](auto&& s, auto&& t, std::error_code& ed) { t.mode(mode, ed); }
+        [mode](auto&&, auto&& tgt, std::error_code& ed) { tgt.mode(mode, ed); }
     );
     if (ctx.keep_time) apply_attr("time", source, target, ec,
-        [](auto&& s, auto&& t, std::error_code& ed) { t.time(s.time(), ed); }
+        [](auto&& src, auto&& tgt, std::error_code& ed) { tgt.time(src.time(), ed); }
     );
     if (ec) return false;
 
-    if (verbose) ctx.verbose("attrs", target.file.path());
+    if (announce) ctx.verbose("attrs", target.file.path());
     return true;
 }
 
@@ -498,19 +498,20 @@ auto copy_dispatch(node& source, node& target, bool top_level)
             if (ec) { ctx.fail("read symlink", source.file.path(), ec); return status::failed; }
 
             return copy_generic(source, target,
-                [&p](auto&& s, auto&& t) { std::error_code ec; return t.file.get_target_path(ec) == p; },
-                [&p](auto&& s, auto&& t, std::error_code& ec) { io::create_symlink(t.parent, t.name, p, ec); }
+                [&p](auto&&, auto&& tgt) { std::error_code ec; return tgt.file.get_target_path(ec) == p; },
+                [&p](auto&&, auto&& tgt, std::error_code& ec) { io::create_symlink(tgt.parent, tgt.name, p, ec); }
             );
         }
 
         case io::file_type::block:
             if (ctx.keep_devices)
                 return copy_generic(source, target,
-                    [](auto&& s, auto&& t) {
-                        return s.file.type() == t.file.type() && s.file.device_type() == t.file.device_type();
+                    [](auto&& src, auto&& tgt) {
+                        return src.file.type() == tgt.file.type()
+                            && src.file.device_type() == tgt.file.device_type();
                     },
-                    [](auto&& s, auto&& t, std::error_code& ec) {
-                        io::create_block_device(t.parent, t.name, s.file.device_type(), ec);
+                    [](auto&& src, auto&& tgt, std::error_code& ec) {
+                        io::create_block_device(tgt.parent, tgt.name, src.file.device_type(), ec);
                     }
                 );
             else if (!top_level)
@@ -523,11 +524,12 @@ auto copy_dispatch(node& source, node& target, bool top_level)
         case io::file_type::character:
             if (ctx.keep_devices)
                 return copy_generic(source, target,
-                    [](auto&& s, auto&& t) {
-                        return s.file.type() == t.file.type() && s.file.device_type() == t.file.device_type();
+                    [](auto&& src, auto&& tgt) {
+                        return src.file.type() == tgt.file.type()
+                            && src.file.device_type() == tgt.file.device_type();
                     },
-                    [](auto&& s, auto&& t, std::error_code& ec) {
-                        io::create_char_device(t.parent, t.name, s.file.device_type(), ec);
+                    [](auto&& src, auto&& tgt, std::error_code& ec) {
+                        io::create_char_device(tgt.parent, tgt.name, src.file.device_type(), ec);
                     }
                 );
             else if (!top_level)
@@ -540,8 +542,8 @@ auto copy_dispatch(node& source, node& target, bool top_level)
         case io::file_type::fifo:
             if (ctx.keep_special)
                 return copy_generic(source, target,
-                    [](auto&& s, auto&& t) { return s.file.type() == t.file.type(); },
-                    [](auto&& s, auto&& t, std::error_code& ec) { io::create_fifo(t.parent, t.name, ec); }
+                    [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
+                    [](auto&&, auto&& tgt, std::error_code& ec) { io::create_fifo(tgt.parent, tgt.name, ec); }
                 );
             else if (!top_level)
             {
@@ -553,8 +555,8 @@ auto copy_dispatch(node& source, node& target, bool top_level)
         case io::file_type::socket:
             if (ctx.keep_special)
                 return copy_generic(source, target,
-                    [](auto&& s, auto&& t) { return s.file.type() == t.file.type(); },
-                    [](auto&& s, auto&& t, std::error_code& ec) { io::create_socket(t.parent, t.name, ec); }
+                    [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
+                    [](auto&&, auto&& tgt, std::error_code& ec) { io::create_socket(tgt.parent, tgt.name, ec); }
                 );
             else if (!top_level)
             {
