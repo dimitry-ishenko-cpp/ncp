@@ -40,15 +40,14 @@ struct context
     bool can_chown = false;
     io::user_id uid = -1;
 
+    bool follow_links = true;
     bool interactive = false;
-
-    bool keep_mode = false;
-    bool keep_time = false;
-    bool keep_user = false, keep_group = false;
-
     bool keep_devices = false;
-    bool keep_links = false;
+    bool keep_group = false;
+    bool keep_mode = false;
     bool keep_special = false;
+    bool keep_time = false;
+    bool keep_user = false;
 
     constexpr bool appy_attrs() const noexcept {
         return keep_group || keep_mode || keep_time || keep_user;
@@ -610,9 +609,9 @@ void copy_tree(node source, node target, bool top_level)
                         if (ctx.exiting()) break;
 
                         node child_source{ .parent = source.file, .name = *name };
-                        child_source.file = ctx.keep_links
-                            ? io::file{source.file, *name, ec}
-                            : io::file{source.file, *name, io::follow_symlinks, ec};
+                        child_source.file = ctx.follow_links
+                            ? io::file{source.file, *name, io::follow_symlinks, ec}
+                            : io::file{source.file, *name, ec};
                         if (ec) { fail("access", child_source, ec); continue; }
 
                         node child_target{ .parent = target.file, .name = *name };
@@ -916,7 +915,7 @@ try
 
         if (args["--recursive"]) ctx.recursive = true;
         // keep symlinks in recursive mode by default
-        ctx.keep_links = ctx.recursive;
+        ctx.follow_links = !ctx.recursive;
 
         auto&& follow_links = args["--follow-links"];
         auto&& keep_links = args["--keep-links"];
@@ -925,8 +924,8 @@ try
             "'--follow-links' and '--keep-links' are mutually exclusive"
         };
 
-        if (follow_links) ctx.keep_links = false;
-        else if (keep_links) ctx.keep_links = true;
+        if (follow_links) ctx.follow_links = true;
+        else if (keep_links) ctx.follow_links = false;
 
         if (auto&& unlink = args["--unlink"])
         {
@@ -957,9 +956,9 @@ try
         for (auto&& path : args["SOURCE"].values())
         {
             node source{ .parent = cwd, .name = path };
-            source.file = ctx.keep_links
-                ? io::file{source.name, ec}
-                : io::file{source.name, io::follow_symlinks, ec};
+            source.file = ctx.follow_links
+                ? io::file{source.name, io::follow_symlinks, ec}
+                : io::file{source.name, ec};
             if (ec) fail("access", source, ec);
             else sources.push_back(std::move(source));
         }
@@ -974,9 +973,9 @@ try
             if (destination_path)
             {
                 node source{ .parent = cwd, .name = destination_path.value() };
-                source.file = ctx.keep_links
-                    ? io::file{source.name, ec}
-                    : io::file{source.name, io::follow_symlinks, ec};
+                source.file = ctx.follow_links
+                    ? io::file{source.name, io::follow_symlinks, ec}
+                    : io::file{source.name, ec};
                 if (ec) fail("access", source, ec);
                 else sources.push_back(std::move(source));
             }
