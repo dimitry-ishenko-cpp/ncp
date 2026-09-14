@@ -23,8 +23,7 @@
 namespace io
 {
 
-struct follow_symlinks_t { explicit follow_symlinks_t() = default; };
-inline constexpr follow_symlinks_t follow_symlinks{};
+enum follow_links_t { no_follow_links, follow_links };
 
 class file
 {
@@ -46,22 +45,19 @@ class file
 
     io::device rdev_ = 0;
 
-    ////////////////////
-    file(const file& parent, const io::path&, bool follow, std::error_code&) noexcept;
-
 public:
     ////////////////////
     file() noexcept = default;
 
+    file(const file& parent, const io::path& name, follow_links_t, std::error_code&) noexcept;
     file(const file& parent, const io::path& name, std::error_code& ec) noexcept :
-        file{parent, name, false, ec}
-    { }
-    file(const file& parent, const io::path& name, follow_symlinks_t, std::error_code& ec) noexcept :
-        file{parent, name, true, ec}
+        file{parent, name, follow_links, ec}
     { }
 
-    file(const io::path& path, std::error_code& ec) noexcept : file{{}, path, false, ec} { }
-    file(const io::path& path, follow_symlinks_t, std::error_code& ec) noexcept : file{{}, path, true, ec} { }
+    file(const io::path& path, follow_links_t follow, std::error_code& ec) noexcept :
+        file{{}, path, follow, ec}
+    { }
+    file(const io::path& path, std::error_code& ec) noexcept : file{{}, path, follow_links, ec} { }
 
     const auto& path() const noexcept { return path_; }
     const auto& fd() const noexcept { return fd_; }

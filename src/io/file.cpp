@@ -44,7 +44,7 @@ inline auto proxy_path(const desc& fd) noexcept {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-file::file(const file& parent, const io::path& path, bool follow, std::error_code& ec) noexcept :
+file::file(const file& parent, const io::path& path, follow_links_t follow, std::error_code& ec) noexcept :
     path_{ parent.empty() ? path : parent.path() / path }
 {
     fd_ = desc{ ::openat(fd_or_cwd(parent), path.c_str(), O_PATH | O_CLOEXEC | (follow ? 0 : O_NOFOLLOW)) };
