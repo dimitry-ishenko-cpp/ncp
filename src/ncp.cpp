@@ -61,7 +61,6 @@ struct context
     io::user_id uid = -1;
 
     bool follow_links = true;
-    bool interactive = false;
     bool keep_devices = false;
     bool keep_group = false;
     bool keep_mode = false;
@@ -69,7 +68,7 @@ struct context
     bool keep_time = false;
     bool keep_user = false;
 
-    constexpr bool appy_attrs() const noexcept {
+    constexpr bool keep_attrs() const noexcept {
         return keep_group || keep_mode || keep_time || keep_user;
     }
 
@@ -99,7 +98,7 @@ struct context
     inline bool exiting() const noexcept { return exit.load(std::memory_order_relaxed); }
 
     std::atomic<bool> failed{ false }, attr_failed{ false };
-    bool copy_all = false, skip_all = false;
+    bool copy_all = true, skip_all = false;
 
     std::atomic<int> files_total{0}, files_copied{0};
     std::atomic<io::file_size> bytes_total{0}, bytes_copied{0};
@@ -289,7 +288,7 @@ auto post_copy_file(node& source, node& target)
             : [](io::file_size b) { ctx.add_bytes_total(b); ctx.add_bytes_copied(b); return !ctx.exiting(); }
         )) return;
 
-        if (ctx.appy_attrs())
+        if (ctx.keep_attrs())
         {
             if (!target.reopen()) return;
             if (!apply_attrs(source, target)) return;
@@ -308,15 +307,17 @@ auto copy_top_level(node& source, node& target)
     {
         if (target.file.is_directory() || ctx.unlink_ == unlink::always)
         {
-            if (ctx.unlink_ == unlink::never) { ctx.fail("exists", target.file.path()); return status::failed; }
-            if (ctx.interactive && !confirm("replace", target)) return status::skipped;
+            if (ctx.unlink_ == unlink::never) {
+                ctx.fail("exists", target.file.path()); return status::failed;
+            }
+            if (!confirm("replace", target)) return status::skipped;
 
             if (!remove_file(target)) return status::failed;
         }
         else
         {
             if (ctx.update_ == update::none) return status::success;
-            if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
+            if (!confirm("overwrite", target)) return status::skipped;
         }
     }
 
@@ -333,8 +334,10 @@ auto copy_regular_file(node& source, node& target)
     {
         if (!target.file.is_regular_file() || ctx.unlink_ == unlink::always)
         {
-            if (ctx.unlink_ == unlink::never) { ctx.fail("exists", target.file.path()); return status::failed; }
-            if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
+            if (ctx.unlink_ == unlink::never) {
+                ctx.fail("exists", target.file.path()); return status::failed;
+            }
+            if (!confirm("overwrite", target)) return status::skipped;
 
             if (!remove_file(target)) return status::failed;
             create = true;
@@ -358,10 +361,10 @@ auto copy_regular_file(node& source, node& target)
             }
 
             if (create) {
-                if (ctx.interactive && !confirm("overwrite", target)) return status::skipped;
+                if (!confirm("overwrite", target)) return status::skipped;
             }
-            else if (ctx.appy_attrs()) {
-                if (ctx.interactive && !confirm("update", target)) return status::skipped;
+            else if (ctx.keep_attrs()) {
+                if (!confirm("update", target)) return status::skipped;
             }
             else return status::success;
         }
@@ -398,8 +401,10 @@ auto copy_directory(node& source, node& target)
     {
         if (!target.file.is_directory())
         {
-            if (ctx.unlink_ == unlink::never) { ctx.fail("exists", target.file.path()); return status::failed; }
-            if (ctx.interactive && !confirm("replace", target)) return status::skipped;
+            if (ctx.unlink_ == unlink::never) {
+                ctx.fail("exists", target.file.path()); return status::failed;
+            }
+            if (!confirm("replace", target)) return status::skipped;
 
             if (!remove_file(target)) return status::failed;
             create = true;
@@ -422,7 +427,7 @@ auto copy_directory(node& source, node& target)
         if (!target.reopen(io::no_follow_links)) return status::failed;
     }
 
-    if (ctx.appy_attrs()) ctx.dir_attrs.emplace_back(source, target);
+    if (ctx.keep_attrs()) ctx.dir_attrs.emplace_back(source, target);
     else ctx.add_files_copied(1);
 
     if (ctx.move) ctx.rmdirs.push_back(source);
@@ -438,8 +443,10 @@ auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
     {
         if (!match_fn(source, target) || ctx.unlink_ == unlink::always)
         {
-            if (ctx.unlink_ == unlink::never) { ctx.fail("exists", target.file.path()); return status::failed; }
-            if (ctx.interactive && !confirm("replace", target)) return status::skipped;
+            if (ctx.unlink_ == unlink::never) {
+                ctx.fail("exists", target.file.path()); return status::failed;
+            }
+            if (!confirm("replace", target)) return status::skipped;
 
             if (!remove_file(target)) return status::failed;
             create = true;
@@ -461,7 +468,7 @@ auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
         if (!create_generic(source, target, create_fn)) return status::failed;
     }
 
-    if (ctx.appy_attrs())
+    if (ctx.keep_attrs())
     {
         if (create && !target.reopen(io::no_follow_links)) return status::failed;
         if (!apply_attrs(source, target, !create)) return status::failed;
@@ -853,7 +860,7 @@ try
         if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
         if (args["--devices"]) ctx.keep_devices = true;
         if (args["--group"]) ctx.keep_group = true;
-        if (args["--interactive"]) ctx.interactive = true;
+        if (args["--interactive"]) ctx.copy_all = false;
         if (args["--mode"]) ctx.keep_mode = true;
         if (args["--move"] || name == "nmv") ctx.move = true;
         if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
