@@ -814,12 +814,13 @@ try
         {       "--special",        "Preserve named pipes and sockets."                 },
         { "-T", "--target", "dir",  "Target directory to copy into."                    },
         { "-t", "--time",           "Preserve modification time."                       },
+        { "-U",                     "Same as --update=older."                           },
         {       "--unlink", "when", pgm::optval,
                                     "Unlink destination before writing. [when] can be one of:\n"
                                     "'never', 'always', 'force' or 'auto'.\n"
                                     "If [when] is omitted, 'always' is assumed.\n"
                                     "If the option is omitted entirely, 'auto' is used."},
-        { "-U", "--update", "when", pgm::optval,
+        {       "--update", "when", pgm::optval,
                                     "Update existing files. [when] can be one of:\n"
                                     "'none', 'all', 'older', 'changed' (size or time) or 'size'.\n"
                                     "If [when] is omitted, 'older' is assumed.\n"
@@ -873,6 +874,7 @@ try
         if (args["--progress"   ]) ctx.progress = true;
         if (args["--special"    ]) ctx.keep_special = true;
         if (args["--time"       ]) ctx.keep_time = true;
+        if (args["-U"           ]) ctx.update_ = update::older;
         if (args["--user"       ]) ctx.keep_user = true;
         if (args["--verbose"    ]) ctx.verbose_ = true;
 
