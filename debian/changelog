@@ -1,3 +1,53 @@
+ncp (0.7) unstable; urgency=medium
+
+  * Prepare for 0.7
+  * ncp: make -U a separate option
+  * ncp: tweak
+  * ncp: make -f a separate option
+  * tests: file => dir collision
+  * ncp: add --unlink=force option
+  * ncp: fix copy_top_level()
+  * ncp: tweak
+  * ncp: refactor copy_dispatch() & copy_directory()
+  * ncp: tweak copy_generic()
+  * ncp: fix copy_regular_file()
+  * ncp: fix copy_directory()
+  * ncp: interactive is redundant
+  * ncp: tweak
+  * ncp: clean up status enum
+  * ncp: pass by ref
+  * ncp: make nodes great again
+  * ncp: refactor printing
+  * io: add path formatter
+  * ncp: operate on nodes at high level
+  * io: use enum follow_links_t
+  * ncp: keep_links => follow_links
+  * ncp: use apply_attrs()
+  * ncp: tweak
+  * ncp: use create_generic()
+  * ncp: tweak
+  * ncp: use create_directory()
+  * ncp: tweak
+  * ncp: eliminate skip()
+  * ncp: use fail()
+  * Add basic tests
+  * io: tweak
+  * ncp: tweak
+  * ncp: fix
+  * ncp: use rename_file()
+  * ncp: tweak
+  * ncp: use copy_file()
+  * ncp: refactor exiting
+  * ncp: refactor counting
+  * ncp: refactor printing
+  * ncp: use remove_file()
+  * ncp: copy_file() => post_copy_file()
+  * ncp: remove info()
+  * ncp: refactor apply_attrs
+  * ncp: use string literals
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Tue, 15 Sep 2026 10:37:19 -0400
+
 ncp (0.6.1) unstable; urgency=medium
 
   * Prepare for 0.6.1
