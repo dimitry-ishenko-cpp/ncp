@@ -173,22 +173,13 @@ bool copy_file(const node& source, const node& target, const io::progress_callba
     else { ctx.verbose("copy", source.file.path(), target.file.path()); return true; }
 }
 
-bool create_directory(const node& target)
+bool create_generic(std::string_view type, const node& node, auto&& create_fn)
 {
     std::error_code ec;
-    io::create_directory(target.parent, target.name, ec);
+    create_fn(node, ec);
 
-    if (ec) { ctx.fail("create dir", target.file.path(), ec); return false; }
-    else { ctx.verbose("create dir", target.file.path()); return true; }
-}
-
-bool create_generic(const node& source, const node& target, auto&& create_fn)
-{
-    std::error_code ec;
-    create_fn(source, target, ec);
-
-    if (ec) { ctx.fail("create", target.file.path(), ec); return false; }
-    else { ctx.verbose("create", target.file.path()); return true; }
+    if (ec) { ctx.fail(type, node.file.path(), ec); return false; }
+    else { ctx.verbose(type, node.file.path()); return true; }
 }
 
 bool remove_file(const node& node)
@@ -415,8 +406,10 @@ auto copy_directory(node& source, node& target)
             ctx.add_files_copied(1);
             return status::moved;
         }
+        if (!create_generic("create dir", target, 
+            [](auto&& node, std::error_code& ec) { io::create_directory(node.parent, node.name, ec); }
+        )) return status::failed;
 
-        if (!create_directory(target)) return status::failed;
         if (!target.reopen(io::no_follow_links)) return status::failed;
     }
 
@@ -428,7 +421,7 @@ auto copy_directory(node& source, node& target)
     return status::success;
 }
 
-auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
+auto copy_generic(node& source, node& target, std::string_view type, auto&& match_fn, auto&& create_fn)
 {
     bool create = false;
 
@@ -457,8 +450,7 @@ auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
             ctx.add_files_copied(1);
             return status::moved;
         }
-
-        if (!create_generic(source, target, create_fn)) return status::failed;
+        if (!create_generic(type, target, create_fn)) return status::failed;
     }
 
     if (ctx.keep_attrs())
@@ -471,6 +463,58 @@ auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
     if (ctx.move) remove_file(source);
 
     return status::success;
+}
+
+auto copy_symlink(node& source, node& target)
+{
+    std::error_code ec;
+    auto path = source.file.get_target_path(ec);
+    if (ec) { ctx.fail("read symlink", source.file.path(), ec); return status::failed; }
+
+    return copy_generic(source, target, "create link",
+        [&path](auto&& src, auto&& tgt) {
+            std::error_code ec;
+            return src.file.type() == tgt.file.type() && tgt.file.get_target_path(ec) == path;
+        },
+        [&path](auto&& tgt, std::error_code& ec) {
+            io::create_symlink(tgt.parent, tgt.name, path, ec);
+        });
+}
+
+auto copy_block_device(node& source, node& target)
+{
+    return copy_generic(source, target, "create block",
+        [](auto&& src, auto&& tgt) {
+            return src.file.type() == tgt.file.type() && src.file.device_type() == tgt.file.device_type();
+        },
+        [rdev = source.file.device_type()](auto&& tgt, std::error_code& ec) {
+            io::create_block_device(tgt.parent, tgt.name, rdev, ec);
+        });
+}
+
+auto copy_char_device(node& source, node& target)
+{
+    return copy_generic(source, target, "create char",
+        [](auto&& src, auto&& tgt) {
+            return src.file.type() == tgt.file.type() && src.file.device_type() == tgt.file.device_type();
+        },
+        [rdev = source.file.device_type()](auto&& tgt, std::error_code& ec) {
+            io::create_char_device(tgt.parent, tgt.name, rdev, ec);
+        });
+}
+
+auto copy_fifo(node& source, node& target)
+{
+    return copy_generic(source, target, "create fifo",
+        [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
+        [](auto&& tgt, std::error_code& ec) { io::create_fifo(tgt.parent, tgt.name, ec); });
+}
+
+auto copy_socket(node& source, node& target)
+{
+    return copy_generic(source, target, "create socket",
+        [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
+        [](auto&& tgt, std::error_code& ec) { io::create_socket(tgt.parent, tgt.name, ec); });
 }
 
 auto copy_dispatch(node& source, node& target, bool top_level)
@@ -492,80 +536,38 @@ auto copy_dispatch(node& source, node& target, bool top_level)
             return copy_directory(source, target);
 
         case io::file_type::symlink:
-        {
-            std::error_code ec;
-            auto p = source.file.get_target_path(ec);
-            if (ec) { ctx.fail("read symlink", source.file.path(), ec); return status::failed; }
-
-            return copy_generic(source, target,
-                [&p](auto&&, auto&& tgt) { std::error_code ec; return tgt.file.get_target_path(ec) == p; },
-                [&p](auto&&, auto&& tgt, std::error_code& ec) { io::create_symlink(tgt.parent, tgt.name, p, ec); }
-            );
-        }
+            return copy_symlink(source, target);
 
         case io::file_type::block:
-            if (ctx.keep_devices)
-                return copy_generic(source, target,
-                    [](auto&& src, auto&& tgt) {
-                        return src.file.type() == tgt.file.type()
-                            && src.file.device_type() == tgt.file.device_type();
-                    },
-                    [](auto&& src, auto&& tgt, std::error_code& ec) {
-                        io::create_block_device(tgt.parent, tgt.name, src.file.device_type(), ec);
-                    }
-                );
-            else if (!top_level)
-            {
-                message(I, "skipping block dev", source.file.path());
-                return status::skipped;
-            }
-            else return copy_top_level(source, target);
+            if (ctx.keep_devices) return copy_block_device(source, target);
+            if (top_level) return copy_top_level(source, target);
+
+            message(I, "skipping block", source.file.path());
+            return status::skipped;
 
         case io::file_type::character:
-            if (ctx.keep_devices)
-                return copy_generic(source, target,
-                    [](auto&& src, auto&& tgt) {
-                        return src.file.type() == tgt.file.type()
-                            && src.file.device_type() == tgt.file.device_type();
-                    },
-                    [](auto&& src, auto&& tgt, std::error_code& ec) {
-                        io::create_char_device(tgt.parent, tgt.name, src.file.device_type(), ec);
-                    }
-                );
-            else if (!top_level)
-            {
-                message(I, "skipping char dev", source.file.path());
-                return status::skipped;
-            }
-            else return copy_top_level(source, target);
+            if (ctx.keep_devices) return copy_char_device(source, target);
+            if (top_level) return copy_top_level(source, target);
+
+            message(I, "skipping char", source.file.path());
+            return status::skipped;
 
         case io::file_type::fifo:
-            if (ctx.keep_special)
-                return copy_generic(source, target,
-                    [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
-                    [](auto&&, auto&& tgt, std::error_code& ec) { io::create_fifo(tgt.parent, tgt.name, ec); }
-                );
-            else if (!top_level)
-            {
-                message(I, "skipping fifo", source.file.path());
-                return status::skipped;
-            }
-            else return copy_top_level(source, target);
+            if (ctx.keep_special) return copy_fifo(source, target);
+            if (top_level) return copy_top_level(source, target);
+
+            message(I, "skipping fifo", source.file.path());
+            return status::skipped;
 
         case io::file_type::socket:
-            if (ctx.keep_special)
-                return copy_generic(source, target,
-                    [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
-                    [](auto&&, auto&& tgt, std::error_code& ec) { io::create_socket(tgt.parent, tgt.name, ec); }
-                );
-            else if (!top_level)
-            {
-                message(I, "skipping socket", source.file.path());
-                return status::skipped;
-            }
-            else return copy_top_level(source, target);
+            if (ctx.keep_special) return copy_socket(source, target);
+            if (top_level) return copy_top_level(source, target);
 
-        case io::file_type::not_found: ctx.fail("not found", source.file.path());
+            message(I, "skipping socket", source.file.path());
+            return status::skipped;
+
+        case io::file_type::not_found:
+            ctx.fail("not found", source.file.path());
             return status::failed;
 
         default: ctx.fail("unknown file", source.file.path());
