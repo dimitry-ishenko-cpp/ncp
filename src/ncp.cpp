@@ -405,11 +405,10 @@ auto copy_directory(node& source, node& target)
                 ctx.fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
-
             if (!remove_file(target)) return status::failed;
+
             create = true;
         }
-        else if (ctx.update_ == update::none) return status::success;
     }
     else create = true;
 
