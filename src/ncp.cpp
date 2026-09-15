@@ -304,7 +304,7 @@ auto post_copy_file(node& source, node& target)
     return status::success;
 }
 
-auto copy_top_level(node& source, node& target)
+auto process_top_level(node& source, node& target)
 {
     // device/special => new
     // device/special => file
@@ -331,7 +331,7 @@ auto copy_top_level(node& source, node& target)
     return post_copy_file(source, target);
 }
 
-auto copy_regular_file(node& source, node& target)
+auto process_file(node& source, node& target)
 {
     bool copy = false;
 
@@ -392,7 +392,7 @@ auto copy_regular_file(node& source, node& target)
     }
 }
 
-auto copy_directory(node& source, node& target)
+auto process_directory(node& source, node& target)
 {
     bool create = false;
 
@@ -435,7 +435,7 @@ auto copy_directory(node& source, node& target)
     return status::success;
 }
 
-auto copy_generic(node& source, node& target, std::string_view type, auto&& match_fn, auto&& create_fn)
+auto process_generic(node& source, node& target, std::string_view type, auto&& match_fn, auto&& create_fn)
 {
     bool create = false;
 
@@ -479,13 +479,13 @@ auto copy_generic(node& source, node& target, std::string_view type, auto&& matc
     return status::success;
 }
 
-auto copy_symlink(node& source, node& target)
+auto process_symlink(node& source, node& target)
 {
     std::error_code ec;
     auto path = source.file.get_target_path(ec);
     if (ec) { ctx.fail("read symlink", source.file.path(), ec); return status::failed; }
 
-    return copy_generic(source, target, "create link",
+    return process_generic(source, target, "create link",
         [&path](auto&& src, auto&& tgt) {
             std::error_code ec;
             return src.file.type() == tgt.file.type() && tgt.file.get_target_path(ec) == path;
@@ -495,9 +495,9 @@ auto copy_symlink(node& source, node& target)
         });
 }
 
-auto copy_block_device(node& source, node& target)
+auto process_block_device(node& source, node& target)
 {
-    return copy_generic(source, target, "create block",
+    return process_generic(source, target, "create block",
         [](auto&& src, auto&& tgt) {
             return src.file.type() == tgt.file.type() && src.file.device_type() == tgt.file.device_type();
         },
@@ -506,9 +506,9 @@ auto copy_block_device(node& source, node& target)
         });
 }
 
-auto copy_char_device(node& source, node& target)
+auto process_char_device(node& source, node& target)
 {
-    return copy_generic(source, target, "create char",
+    return process_generic(source, target, "create char",
         [](auto&& src, auto&& tgt) {
             return src.file.type() == tgt.file.type() && src.file.device_type() == tgt.file.device_type();
         },
@@ -517,21 +517,21 @@ auto copy_char_device(node& source, node& target)
         });
 }
 
-auto copy_fifo(node& source, node& target)
+auto process_fifo(node& source, node& target)
 {
-    return copy_generic(source, target, "create fifo",
+    return process_generic(source, target, "create fifo",
         [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
         [](auto&& tgt, std::error_code& ec) { io::create_fifo(tgt.parent, tgt.name, ec); });
 }
 
-auto copy_socket(node& source, node& target)
+auto process_socket(node& source, node& target)
 {
-    return copy_generic(source, target, "create socket",
+    return process_generic(source, target, "create socket",
         [](auto&& src, auto&& tgt) { return src.file.type() == tgt.file.type(); },
         [](auto&& tgt, std::error_code& ec) { io::create_socket(tgt.parent, tgt.name, ec); });
 }
 
-auto copy_dispatch(node& source, node& target, bool top_level)
+auto dispatch(node& source, node& target, bool top_level)
 {
     if (target.file == source.file)
     {
@@ -543,39 +543,39 @@ auto copy_dispatch(node& source, node& target, bool top_level)
     {
         case io::file_type::regular:
             if (top_level && (target.file.is_device() || target.file.is_special()))
-                return copy_top_level(source, target);
-            else return copy_regular_file(source, target);
+                return process_top_level(source, target);
+            else return process_file(source, target);
 
         case io::file_type::directory:
-            return copy_directory(source, target);
+            return process_directory(source, target);
 
         case io::file_type::symlink:
-            return copy_symlink(source, target);
+            return process_symlink(source, target);
 
         case io::file_type::block:
-            if (ctx.keep_devices) return copy_block_device(source, target);
-            if (top_level && !ctx.move) return copy_top_level(source, target);
+            if (ctx.keep_devices) return process_block_device(source, target);
+            if (top_level && !ctx.move) return process_top_level(source, target);
 
             message(I, "skipping block", source.file.path());
             return status::skipped;
 
         case io::file_type::character:
-            if (ctx.keep_devices) return copy_char_device(source, target);
-            if (top_level && !ctx.move) return copy_top_level(source, target);
+            if (ctx.keep_devices) return process_char_device(source, target);
+            if (top_level && !ctx.move) return process_top_level(source, target);
 
             message(I, "skipping char", source.file.path());
             return status::skipped;
 
         case io::file_type::fifo:
-            if (ctx.keep_special) return copy_fifo(source, target);
-            if (top_level && !ctx.move) return copy_top_level(source, target);
+            if (ctx.keep_special) return process_fifo(source, target);
+            if (top_level && !ctx.move) return process_top_level(source, target);
 
             message(I, "skipping fifo", source.file.path());
             return status::skipped;
 
         case io::file_type::socket:
-            if (ctx.keep_special) return copy_socket(source, target);
-            if (top_level && !ctx.move) return copy_top_level(source, target);
+            if (ctx.keep_special) return process_socket(source, target);
+            if (top_level && !ctx.move) return process_top_level(source, target);
 
             message(I, "skipping socket", source.file.path());
             return status::skipped;
@@ -596,7 +596,7 @@ void copy_tree(node& source, node& target, bool top_level)
     {
         if (ctx.recursive)
         {
-            if (copy_dispatch(source, target, top_level) == status::success)
+            if (dispatch(source, target, top_level) == status::success)
             {
                 for (auto&& name : io::directory_iterator(source.file))
                     if (name)
@@ -616,10 +616,10 @@ void copy_tree(node& source, node& target, bool top_level)
         }
         else message(I, "skipping dir", source.file.path());
     }
-    else copy_dispatch(source, target, top_level);
+    else dispatch(source, target, top_level);
 }
 
-void copy_sources(std::vector<node>& sources, node& target)
+void copy_all(std::vector<node>& sources, node& target)
 {
     if (target.file.is_directory())
     {
@@ -980,7 +980,7 @@ try
             }
         });
 
-        copy_sources(sources, target);
+        copy_all(sources, target);
         ctx.pool->join();
 
         // don't process dirs on Ctrl+C
