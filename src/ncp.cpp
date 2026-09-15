@@ -25,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -120,9 +121,7 @@ struct context
     long last_bytes = 0;
     double speed = 0;
 
-    struct dir_attr_entry { node source, target; };
-    std::vector<dir_attr_entry> dir_attrs;
-
+    std::vector<std::tuple<node, node>> dir_attrs;
     std::vector<node> rmdirs;
 }
 ctx;
