@@ -319,7 +319,7 @@ auto copy_top_level(node& source, node& target)
 
 auto copy_regular_file(node& source, node& target)
 {
-    bool copying = false;
+    bool copy = false;
 
     if (target.file)
     {
@@ -331,7 +331,7 @@ auto copy_regular_file(node& source, node& target)
             if (!confirm("overwrite", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
 
-            copying = true;
+            copy = true;
         }
         else
         {
@@ -341,24 +341,24 @@ auto copy_regular_file(node& source, node& target)
                 case update::older:
                     // don't touch newer files
                     if (target.file.time() >= source.file.time()) return status::skipped;
-                    copying = true;
+                    copy = true;
                     break;
                 case update::changed: 
-                    copying = target.file.size() != source.file.size() || target.file.time() != source.file.time();
+                    copy = target.file.size() != source.file.size() || target.file.time() != source.file.time();
                     break;
                 case update::size:
-                    copying = target.file.size() != source.file.size();
+                    copy = target.file.size() != source.file.size();
                     break;
-                default: copying = true; // update::all
+                default: copy = true; // update::all
             }
-            if (copying && !confirm("overwrite", target)) return status::skipped;
+            if (copy && !confirm("overwrite", target)) return status::skipped;
         }
     }
-    else copying = true;
+    else copy = true;
 
     ctx.add_files_bytes_total(1, source.file.size());
 
-    if (copying)
+    if (copy)
     {
         if (ctx.move && rename_file(source, target))
         {
