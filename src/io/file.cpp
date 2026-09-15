@@ -272,6 +272,13 @@ void create_directory(const file& parent, const path& name, std::error_code& ec)
     else ec = error_code(errno);
 }
 
+void create_hardlink(const file& parent, const path& name,
+    const file& new_parent, const path& new_name, std::error_code& ec) noexcept
+{
+    if (0 == ::linkat(fd_or_cwd(parent), name.c_str(), fd_or_cwd(new_parent), new_name.c_str(), 0)) ec.clear();
+    else ec = error_code(errno);
+}
+
 void create_symlink(const file& parent, const path& name, const path& link_target, std::error_code& ec) noexcept
 {
     if (0 == ::symlinkat(link_target.c_str(), fd_or_cwd(parent), name.c_str())) ec.clear();

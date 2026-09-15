@@ -125,6 +125,20 @@ inline void copy_file(const path& source, const path& target, std::error_code& e
 void create_directory(const file& parent, const path& name, std::error_code&) noexcept;
 inline void create_directory(const path& path, std::error_code& ec) noexcept { io::create_directory({}, path, ec); }
 
+void create_hardlink(const file& parent, const path& name,
+    const file& new_parent, const path& new_name, std::error_code&) noexcept;
+inline void create_hardlink(const file& parent, const path& name,
+    const path& new_path, std::error_code& ec) noexcept {
+    io::create_hardlink(parent, name, file{}, new_path, ec);
+}
+inline void create_hardlink(const path& old_path,
+    const file& new_parent, const path& new_name, std::error_code& ec) noexcept {
+    io::create_hardlink({}, old_path, new_parent, new_name, ec);
+}
+inline void create_hardlink(const path& old_path, const path& new_path, std::error_code& ec) noexcept {
+    io::create_hardlink({}, old_path, {}, new_path, ec);
+}
+
 void create_symlink(const file& parent, const path& name, const path& link_target, std::error_code&) noexcept;
 inline void create_symlink(const path& old_path, const path& link_target, std::error_code& ec) noexcept {
     io::create_symlink({}, old_path, link_target, ec);
