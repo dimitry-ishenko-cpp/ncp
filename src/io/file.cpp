@@ -35,7 +35,7 @@ inline auto error_code(int val) noexcept {
     return std::error_code{val, std::generic_category()};
 }
 
-inline auto fd_or_cwd(const file& parent) { return parent.empty() ? AT_FDCWD : parent.fd().get(); }
+inline auto fd_or_cwd(const file& parent) noexcept { return parent.empty() ? AT_FDCWD : parent.fd().get(); }
 
 inline auto proxy_path(const desc& fd) noexcept {
     return std::format("/proc/self/fd/{}", fd.get());

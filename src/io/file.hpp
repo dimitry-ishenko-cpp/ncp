@@ -126,8 +126,8 @@ void create_directory(const file& parent, const path& name, std::error_code&) no
 inline void create_directory(const path& path, std::error_code& ec) noexcept { io::create_directory({}, path, ec); }
 
 void create_symlink(const file& parent, const path& name, const path& link_target, std::error_code&) noexcept;
-inline void create_symlink(const io::path& path, const io::path& link_target, std::error_code& ec) noexcept {
-    io::create_symlink({}, path, link_target, ec);
+inline void create_symlink(const path& old_path, const path& link_target, std::error_code& ec) noexcept {
+    io::create_symlink({}, old_path, link_target, ec);
 }
 
 void create_block_device(const file& parent, const path& name, device, std::error_code&) noexcept;
@@ -159,11 +159,12 @@ void rename(const file& parent, const path& name,
 inline void rename(const file& parent, const path& name, const path& new_path, std::error_code& ec) noexcept {
     io::rename(parent, name, {}, new_path, ec);
 }
-inline void rename(const io::path& path, const file& new_parent, const io::path& new_name, std::error_code& ec) noexcept {
-    io::rename({}, path, new_parent, new_name, ec);
+inline void rename(const path& old_path,
+    const file& new_parent, const path& new_name, std::error_code& ec) noexcept {
+    io::rename({}, old_path, new_parent, new_name, ec);
 }
-inline void rename(const io::path& path, const io::path& new_path, std::error_code& ec) noexcept {
-    io::rename({}, path, {}, new_path, ec);
+inline void rename(const path& old_path, const path& new_path, std::error_code& ec) noexcept {
+    io::rename({}, old_path, {}, new_path, ec);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
