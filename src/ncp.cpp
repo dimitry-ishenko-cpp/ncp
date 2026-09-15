@@ -862,19 +862,19 @@ try
             ctx.recursive  = true;
             ctx.unlink_ = unlink::force;
         }
-        if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
-        if (args["--devices"]) ctx.keep_devices = true;
-        if (args["-f"]) ctx.unlink_ = unlink::force;
-        if (args["--group"]) ctx.keep_group = true;
+        if (args["-D"           ]) ctx.keep_devices = ctx.keep_special = true;
+        if (args["--devices"    ]) ctx.keep_devices = true;
+        if (args["-f"           ]) ctx.unlink_ = unlink::force;
+        if (args["--group"      ]) ctx.keep_group = true;
         if (args["--interactive"]) ctx.copy_all = false;
-        if (args["--mode"]) ctx.keep_mode = true;
-        if (args["--move"] || name == "nmv") ctx.move = true;
-        if (args["--ownership"]) ctx.keep_group = ctx.keep_user = true;
-        if (args["--progress"]) ctx.progress = true;
-        if (args["--special"]) ctx.keep_special = true;
-        if (args["--time"]) ctx.keep_time = true;
-        if (args["--user"]) ctx.keep_user = true;
-        if (args["--verbose"]) ctx.verbose_ = true;
+        if (args["--mode"       ]) ctx.keep_mode = true;
+        if (args["--move"       ] || name == "nmv") ctx.move = true;
+        if (args["--ownership"  ]) ctx.keep_group = ctx.keep_user = true;
+        if (args["--progress"   ]) ctx.progress = true;
+        if (args["--special"    ]) ctx.keep_special = true;
+        if (args["--time"       ]) ctx.keep_time = true;
+        if (args["--user"       ]) ctx.keep_user = true;
+        if (args["--verbose"    ]) ctx.verbose_ = true;
 
         auto threads = 1;
         if (auto&& jobs = args["--jobs"])
