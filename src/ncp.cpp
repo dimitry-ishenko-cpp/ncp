@@ -36,7 +36,7 @@ constexpr auto V = "V:";
 constexpr auto W = "W:";
 
 enum class status { failed, skipped, moved, success };
-enum class unlink { never, always, auto_ };
+enum class unlink { never, always, force, auto_ };
 enum class update { none, all, older, changed, size, };
 
 struct node
@@ -168,6 +168,13 @@ bool copy_file(const node& source, const node& target, const io::progress_callba
 {
     std::error_code ec;
     io::copy_file(source.file, target.parent, target.name, ec, cb);
+
+    if (ec == std::errc::permission_denied && ctx.unlink_ == unlink::force && target.file.is_regular_file())
+    {
+        std::error_code ed;
+        io::remove(target.parent, target.name, ed);
+        if (!ed) io::copy_file(source.file, target.parent, target.name, ec, cb);
+    }
 
     if (ec) { ctx.fail("copy", source.file.path(), target.file.path(), ec); return false; }
     else { ctx.verbose("copy", source.file.path(), target.file.path()); return true; }
@@ -794,8 +801,8 @@ try
         {       "--devices",        "Preserve device files."                            },
         { "-f", "--unlink", "when", pgm::optval,
                                     "Unlink destination before writing. [when] can be one of:\n"
-                                    "'never', 'always' or 'auto'.\n"
-                                    "If [when] is omitted, 'always' is assumed.\n"
+                                    "'never', 'always', 'force' or 'auto'.\n"
+                                    "If [when] is omitted, 'force' is assumed.\n"
                                     "If the option is omitted entirely, 'auto' is used."},
         { "-g", "--group",          "Preserve group ownership."                         },
         { "-h", "--help",           "Show this help message and exit."                  },
@@ -893,7 +900,8 @@ try
         {
             auto&& when = unlink.value();
             if (when == "never") ctx.unlink_ = unlink::never;
-            else if (when.empty() || when == "always") ctx.unlink_ = unlink::always;
+            else if (when == "always") ctx.unlink_ = unlink::always;
+            else if (when.empty() || when == "force") ctx.unlink_ = unlink::force;
             else if (when == "auto") ctx.unlink_ = unlink::auto_;
             else throw pgm::invalid_argument{ "bad --unlink value '" + when + "'" };
         }
