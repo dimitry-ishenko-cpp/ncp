@@ -328,7 +328,7 @@ auto copy_top_level(node& source, node& target)
 
 auto copy_regular_file(node& source, node& target)
 {
-    bool create = false;
+    bool copying = false;
 
     if (target.file)
     {
@@ -338,42 +338,36 @@ auto copy_regular_file(node& source, node& target)
                 ctx.fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("overwrite", target)) return status::skipped;
-
             if (!remove_file(target)) return status::failed;
-            create = true;
+
+            copying = true;
         }
         else
         {
             switch (ctx.update_)
             {
-                case update::none: return status::success;
+                case update::none: return status::skipped;
                 case update::older:
-                    if (target.file.time() < source.file.time()) create = true;
-                    else return status::success; // don't touch newer files
+                    // don't touch newer files
+                    if (target.file.time() >= source.file.time()) return status::skipped;
+                    copying = true;
                     break;
                 case update::changed: 
-                    create = target.file.size() != source.file.size() || target.file.time() != source.file.time();
+                    copying = target.file.size() != source.file.size() || target.file.time() != source.file.time();
                     break;
                 case update::size:
-                    create = target.file.size() != source.file.size();
+                    copying = target.file.size() != source.file.size();
                     break;
-                default: create = true;
+                default: copying = true; // update::all
             }
-
-            if (create) {
-                if (!confirm("overwrite", target)) return status::skipped;
-            }
-            else if (ctx.keep_attrs()) {
-                if (!confirm("update", target)) return status::skipped;
-            }
-            else return status::success;
+            if (copying && !confirm("overwrite", target)) return status::skipped;
         }
     }
-    else create = true;
+    else copying = true;
 
     ctx.add_files_bytes_total(1, source.file.size());
 
-    if (create)
+    if (copying)
     {
         if (ctx.move && rename_file(source, target))
         {
@@ -382,9 +376,9 @@ auto copy_regular_file(node& source, node& target)
         }
         else return post_copy_file(source, target);
     }
-    else // already checked ctx.appy_attrs()
+    else
     {
-        if (!apply_attrs(source, target, true)) return status::failed;
+        if (ctx.keep_attrs() && !apply_attrs(source, target, true)) return status::failed;
 
         ctx.add_files_bytes_copied(1, source.file.size());
         if (ctx.move) remove_file(source);
