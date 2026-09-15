@@ -796,14 +796,10 @@ try
 
     pgm::args args
     {
-        { "-a", "--archive",        "Archive mode (equivalent to -rmotD --unlink=auto)."},
+        { "-a", "--archive",        "Archive mode (equivalent to -Dfmort"               },
         { "-D",                     "Same as --special --devices."                      },
         {       "--devices",        "Preserve device files."                            },
-        { "-f", "--unlink", "when", pgm::optval,
-                                    "Unlink destination before writing. [when] can be one of:\n"
-                                    "'never', 'always', 'force' or 'auto'.\n"
-                                    "If [when] is omitted, 'force' is assumed.\n"
-                                    "If the option is omitted entirely, 'auto' is used."},
+        { "-f",                     "Same as --unlink=force."                           },
         { "-g", "--group",          "Preserve group ownership."                         },
         { "-h", "--help",           "Show this help message and exit."                  },
         { "-i", "--interactive",    "Prompt before overwriting files."                  },
@@ -818,6 +814,11 @@ try
         {       "--special",        "Preserve named pipes and sockets."                 },
         { "-T", "--target", "dir",  "Target directory to copy into."                    },
         { "-t", "--time",           "Preserve modification time."                       },
+        {       "--unlink", "when", pgm::optval,
+                                    "Unlink destination before writing. [when] can be one of:\n"
+                                    "'never', 'always', 'force' or 'auto'.\n"
+                                    "If [when] is omitted, 'always' is assumed.\n"
+                                    "If the option is omitted entirely, 'auto' is used."},
         { "-U", "--update", "when", pgm::optval,
                                     "Update existing files. [when] can be one of:\n"
                                     "'none', 'all', 'older', 'changed' (size or time) or 'size'.\n"
@@ -859,10 +860,11 @@ try
             ctx.keep_time  = true;
             ctx.keep_user  = true;
             ctx.recursive  = true;
-            ctx.unlink_ = unlink::auto_;
+            ctx.unlink_ = unlink::force;
         }
         if (args["-D"]) ctx.keep_devices = ctx.keep_special = true;
         if (args["--devices"]) ctx.keep_devices = true;
+        if (args["-f"]) ctx.unlink_ = unlink::force;
         if (args["--group"]) ctx.keep_group = true;
         if (args["--interactive"]) ctx.copy_all = false;
         if (args["--mode"]) ctx.keep_mode = true;
@@ -900,8 +902,8 @@ try
         {
             auto&& when = unlink.value();
             if (when == "never") ctx.unlink_ = unlink::never;
-            else if (when == "always") ctx.unlink_ = unlink::always;
-            else if (when.empty() || when == "force") ctx.unlink_ = unlink::force;
+            else if (when.empty() || when == "always") ctx.unlink_ = unlink::always;
+            else if (when == "force") ctx.unlink_ = unlink::force;
             else if (when == "auto") ctx.unlink_ = unlink::auto_;
             else throw pgm::invalid_argument{ "bad --unlink value '" + when + "'" };
         }
