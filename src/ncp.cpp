@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cstdio> // std::getchar
 #include <exception>
+#include <format>
 #include <future>
 #include <optional>
 #include <print>
@@ -379,7 +380,7 @@ auto process_file(node& source, node& target)
             ctx.add_files_bytes_copied(1, source.file.size());
             return status::moved;
         }
-        else return post_copy_file(source, target);
+        return post_copy_file(source, target);
     }
     else
     {
@@ -988,7 +989,7 @@ try
 
         if (auto signal = ctx.exit_signal.exchange(0))
         {
-            message(I, "received signal " + std::to_string(signal) + ", exiting");
+            message(I, std::format("received signal {}, exiting", signal));
             code = interrupted;
         }
         else
