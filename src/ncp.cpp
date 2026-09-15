@@ -440,11 +440,11 @@ auto copy_generic(node& source, node& target, auto&& match_fn, auto&& create_fn)
                 ctx.fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
-
             if (!remove_file(target)) return status::failed;
+
             create = true;
         }
-        else if (ctx.update_ == update::none) return status::success;
+        else if (ctx.update_ == update::none) return status::skipped;
     }
     else create = true;
 
