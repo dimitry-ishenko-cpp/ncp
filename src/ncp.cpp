@@ -61,6 +61,7 @@ struct context
     io::user_id uid = -1;
 
     bool follow_links = true;
+    bool keep_acl = false;
     bool keep_devices = false;
     bool keep_group = false;
     bool keep_mode = false;
@@ -69,7 +70,7 @@ struct context
     bool keep_user = false;
 
     constexpr bool keep_attrs() const noexcept {
-        return keep_group || keep_mode || keep_time || keep_user;
+        return keep_acl || keep_group || keep_mode || keep_time || keep_user;
     }
 
     bool move = false;
@@ -260,6 +261,11 @@ bool apply_attrs(const node& source, node& target, bool announce = false)
     );
     if (ctx.keep_mode) apply_attr("mode", source, target, ec,
         [mode](auto&&, auto&& tgt, std::error_code& ed) { tgt.mode(mode, ed); }
+    );
+    if (ctx.keep_acl) apply_attr("acl", source, target, ec,
+        [](auto&& src, auto&& tgt, std::error_code& ed) {
+            auto acl = io::get_acl(src, ed); if (!ed) io::set_acl(tgt, acl, ed);
+        }
     );
     if (ctx.keep_time) apply_attr("time", source, target, ec,
         [](auto&& src, auto&& tgt, std::error_code& ed) { tgt.time(src.time(), ed); }
@@ -796,6 +802,7 @@ try
 
     pgm::args args
     {
+        { "-A", "--acl",            "Preserve ACL (access control list)."               },
         { "-a", "--archive",        "Archive mode (equivalent to -Dfmort"               },
         { "-D",                     "Same as --special --devices."                      },
         {       "--devices",        "Preserve device files."                            },
@@ -863,6 +870,7 @@ try
             ctx.recursive  = true;
             ctx.unlink_ = unlink::force;
         }
+        if (args["--acl"        ]) ctx.keep_acl = true;
         if (args["-D"           ]) ctx.keep_devices = ctx.keep_special = true;
         if (args["--devices"    ]) ctx.keep_devices = true;
         if (args["-f"           ]) ctx.unlink_ = unlink::force;
