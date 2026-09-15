@@ -342,7 +342,7 @@ auto copy_regular_file(node& source, node& target)
             if (ctx.unlink_ == unlink::never) {
                 ctx.fail("exists", target.file.path()); return status::failed;
             }
-            if (!confirm("overwrite", target)) return status::skipped;
+            if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
 
             copy = true;
@@ -883,7 +883,7 @@ try
         if (args["--time"       ]) ctx.keep_time = true;
         if (args["-U"           ]) ctx.update_ = update::older;
         if (args["--user"       ]) ctx.keep_user = true;
-        if (args["--verbose"    ]) ctx.verbose_ = true;
+        if (args["--verbose"    ]) ctx.verbose_  = true;
 
         auto threads = 1;
         if (auto&& jobs = args["--jobs"])
