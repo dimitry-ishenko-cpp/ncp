@@ -171,7 +171,7 @@ void file::owner(io::user_id uid, io::group_id gid, std::error_code& ec) noexcep
 
 ////////////////////////////////////////////////////////////////////////////////
 void copy_file(const file& source, const file& target_parent, const path& target_name,
-    std::error_code& ec, const progress_callback& cb)
+    std::error_code& ec, const copy_callback& cb)
 {
     constexpr file_size block_size = 4194304; // 4MiB
 

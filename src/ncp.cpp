@@ -165,7 +165,7 @@ bool confirm(std::string_view action, const node& target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool copy_file(const node& source, const node& target, const io::progress_callback& cb)
+bool copy_file(const node& source, const node& target, const io::copy_callback& cb)
 {
     std::error_code ec;
     io::copy_file(source.file, target.parent, target.name, ec, cb);
