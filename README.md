@@ -4,13 +4,10 @@
 Usage: ncp [option]... <SOURCE>... [DESTINATION]
 
 Options:
--a, --archive          Archive mode (equivalent to -rmotD --unlink=auto).
+-a, --archive          Archive mode (equivalent to -Dfmort
 -D                     Same as --special --devices.
     --devices          Preserve device files.
--f, --unlink=[when]    Unlink destination before writing. [when] can be one of:
-                       'never', 'always' or 'auto'.
-                       If [when] is omitted, 'always' is assumed.
-                       If the option is omitted entirely, 'auto' is used.
+-f                     Same as --unlink=force.
 -g, --group            Preserve group ownership.
 -h, --help             Show this help message and exit.
 -i, --interactive      Prompt before overwriting files.
@@ -25,7 +22,12 @@ Options:
     --special          Preserve named pipes and sockets.
 -T, --target=<dir>     Target directory to copy into.
 -t, --time             Preserve modification time.
--U, --update=[when]    Update existing files. [when] can be one of:
+-U                     Same as --update=older.
+    --unlink=[when]    Unlink destination before writing. [when] can be one of:
+                       'never', 'always', 'force' or 'auto'.
+                       If [when] is omitted, 'always' is assumed.
+                       If the option is omitted entirely, 'auto' is used.
+    --update=[when]    Update existing files. [when] can be one of:
                        'none', 'all', 'older', 'changed' (size or time) or 'size'.
                        If [when] is omitted, 'older' is assumed.
                        If the option is omitted entirely, all files are updated,
