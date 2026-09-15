@@ -286,7 +286,7 @@ auto post_copy_file(node& source, node& target)
         }
 
         ctx.add_files_copied(1);
-        if (ctx.move && source.file.is_regular_file()) remove_file(source);
+        if (ctx.move) remove_file(source);
     });
 
     return status::success;
@@ -294,20 +294,22 @@ auto post_copy_file(node& source, node& target)
 
 auto copy_top_level(node& source, node& target)
 {
+    // device/special => new
+    // device/special => file
+    // device/special => dir
+    // device/special => device/special
+    // regular => device/special
+
     if (target.file)
     {
-        if (target.file.is_directory() || ctx.unlink_ == unlink::always)
+        if (ctx.unlink_ == unlink::always)
         {
-            if (ctx.unlink_ == unlink::never) {
-                ctx.fail("exists", target.file.path()); return status::failed;
-            }
             if (!confirm("replace", target)) return status::skipped;
-
             if (!remove_file(target)) return status::failed;
         }
         else
         {
-            if (ctx.update_ == update::none) return status::success;
+            if (ctx.update_ == update::none) return status::skipped;
             if (!confirm("overwrite", target)) return status::skipped;
         }
     }
@@ -540,28 +542,28 @@ auto copy_dispatch(node& source, node& target, bool top_level)
 
         case io::file_type::block:
             if (ctx.keep_devices) return copy_block_device(source, target);
-            if (top_level) return copy_top_level(source, target);
+            if (top_level && !ctx.move) return copy_top_level(source, target);
 
             message(I, "skipping block", source.file.path());
             return status::skipped;
 
         case io::file_type::character:
             if (ctx.keep_devices) return copy_char_device(source, target);
-            if (top_level) return copy_top_level(source, target);
+            if (top_level && !ctx.move) return copy_top_level(source, target);
 
             message(I, "skipping char", source.file.path());
             return status::skipped;
 
         case io::file_type::fifo:
             if (ctx.keep_special) return copy_fifo(source, target);
-            if (top_level) return copy_top_level(source, target);
+            if (top_level && !ctx.move) return copy_top_level(source, target);
 
             message(I, "skipping fifo", source.file.path());
             return status::skipped;
 
         case io::file_type::socket:
             if (ctx.keep_special) return copy_socket(source, target);
-            if (top_level) return copy_top_level(source, target);
+            if (top_level && !ctx.move) return copy_top_level(source, target);
 
             message(I, "skipping socket", source.file.path());
             return status::skipped;
