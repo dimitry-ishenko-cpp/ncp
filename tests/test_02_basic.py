@@ -31,6 +31,16 @@ def test_overwrite_file(tmp_path, monkeypatch, run_ncp):
     assert Path("target").read_text() == "source"
 
 
+def test_overwrite_dir(tmp_path, monkeypatch, run_ncp):
+    monkeypatch.chdir(tmp_path)
+    Path("source").write_text("source")
+    Path("dir").mkdir()
+    (Path("dir") / "source").mkdir()
+
+    res = run_ncp("source", "dir")
+    assert res.returncode == 3
+
+
 def test_copy_onto_self(tmp_path, monkeypatch, run_ncp):
     monkeypatch.chdir(tmp_path)
     Path("source").write_text("source")
