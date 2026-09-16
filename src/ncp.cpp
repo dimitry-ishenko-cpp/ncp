@@ -486,7 +486,7 @@ auto process_symlink(node& source, node& target)
     auto path = source.file.get_target_path(ec);
     if (ec) { ctx.fail("read symlink", source.file.path(), ec); return status::failed; }
 
-    return process_generic(source, target, "create link",
+    return process_generic(source, target, "symlink",
         [&path](auto&& src, auto&& tgt) {
             std::error_code ec;
             return src.file.type() == tgt.file.type() && tgt.file.get_target_path(ec) == path;
@@ -989,7 +989,7 @@ try
 
         if (auto signal = ctx.exit_signal.exchange(0))
         {
-            message(I, std::format("received signal {}, exiting", signal));
+            message(I, std::format("exiting - received signal {}", signal));
             code = interrupted;
         }
         else
