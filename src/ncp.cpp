@@ -33,15 +33,36 @@
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
-constexpr auto E = "E:";
-constexpr auto I = "I:";
-constexpr auto V = "V:";
-constexpr auto W = "W:";
+bool can_chown = false;
+io::user_id uid = -1;
 
-enum class status { failed, skipped, moved, success };
+bool follow_links = true;
+bool keep_acl = false;
+bool keep_devices = false;
+bool keep_group = false;
+bool keep_hardlinks = false;
+bool keep_mode = false;
+bool keep_special = false;
+bool keep_time = false;
+bool keep_user = false;
+
+constexpr bool keep_attrs() noexcept {
+    return keep_acl || keep_group || keep_mode || keep_time || keep_user;
+}
+
+bool move = false;
+bool progress = false;
+bool recursive = false;
+
 enum class unlink { never, always, force, auto_ };
-enum class update { none, all, older, changed, size, };
+enum unlink unlink_ = unlink::auto_;
 
+enum class update { none, all, older, changed, size, };
+enum update update_ = update::all;
+
+bool verbose_ = false;
+
+////////////////////////////////////////////////////////////////////////////////
 struct node
 {
     io::file parent;
@@ -58,79 +79,55 @@ struct node
     auto empty() const noexcept { return file.empty(); }
 };
 
-struct context
+std::optional<asio::thread_pool> pool;
+std::optional<std::counting_semaphore<>> semaphore;
+
+std::atomic<int> exit_signal{0};
+std::atomic<bool> exit_{ false };
+inline bool exiting() noexcept { return exit_.load(std::memory_order_relaxed); }
+
+std::atomic<bool> failed{ false }, attrs_failed{ false };
+bool copy_all = true, skip_all = false;
+
+std::vector<std::tuple<node, node>> dir_attrs;
+std::vector<node> rmdirs;
+
+using file_id = std::tuple<io::device, io::index_node>;
+std::map<file_id, std::vector<std::tuple<node, node>>> hardlinks;
+
+std::atomic<int> files_total{0}, files_copied{0};
+std::atomic<io::file_size> bytes_total{0}, bytes_copied{0};
+
+inline void add_files_total(int n) noexcept { files_total.fetch_add(n, std::memory_order_relaxed); }
+inline void add_files_copied(int n) noexcept { files_copied.fetch_add(n, std::memory_order_relaxed); }
+
+inline void add_bytes_total(io::file_size b) noexcept { bytes_total.fetch_add(b, std::memory_order_relaxed); }
+inline void add_bytes_copied(io::file_size b) noexcept { bytes_copied.fetch_add(b, std::memory_order_relaxed); }
+
+inline void add_files_bytes_total(int n, io::file_size b) noexcept { add_files_total(n); add_bytes_total(b); }
+inline void add_files_bytes_copied(int n, io::file_size b) noexcept { add_files_copied(n); add_bytes_copied(b); }
+
+double percent_copied = 0;
+
+std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+std::chrono::steady_clock::time_point last_time = start_time;
+long last_bytes = 0;
+double speed = 0;
+
+constexpr auto E = "E:";
+constexpr auto I = "I:";
+constexpr auto V = "V:";
+constexpr auto W = "W:";
+
+void fail(auto&&... args)
 {
-    bool can_chown = false;
-    io::user_id uid = -1;
-
-    bool follow_links = true;
-    bool keep_acl = false;
-    bool keep_devices = false;
-    bool keep_group = false;
-    bool keep_hardlinks = false;
-    bool keep_mode = false;
-    bool keep_special = false;
-    bool keep_time = false;
-    bool keep_user = false;
-
-    constexpr bool keep_attrs() const noexcept {
-        return keep_acl || keep_group || keep_mode || keep_time || keep_user;
-    }
-
-    bool move = false;
-    bool progress = false;
-    bool recursive = false;
-    enum unlink unlink_ = unlink::auto_;
-    enum update update_ = update::all;
-    bool verbose_ = false;
-
-    void fail(auto&&... args)
-    {
-        message(E, std::forward<decltype (args)>(args)...);
-        failed.store(true, std::memory_order_relaxed);
-    }
-
-    void verbose(auto&&... args) {
-        if (verbose_) message(V, std::forward<decltype (args)>(args)...);
-    }
-
-    ////////////////////
-    std::optional<asio::thread_pool> pool;
-    std::optional<std::counting_semaphore<>> semaphore;
-
-    std::atomic<int> exit_signal{0};
-    std::atomic<bool> exit{ false };
-    inline bool exiting() const noexcept { return exit.load(std::memory_order_relaxed); }
-
-    std::atomic<bool> failed{ false }, attr_failed{ false };
-    bool copy_all = true, skip_all = false;
-
-    std::atomic<int> files_total{0}, files_copied{0};
-    std::atomic<io::file_size> bytes_total{0}, bytes_copied{0};
-
-    inline void add_files_total(int n) noexcept { files_total.fetch_add(n, std::memory_order_relaxed); }
-    inline void add_files_copied(int n) noexcept { files_copied.fetch_add(n, std::memory_order_relaxed); }
-
-    inline void add_bytes_total(io::file_size b) noexcept { bytes_total.fetch_add(b, std::memory_order_relaxed); }
-    inline void add_bytes_copied(io::file_size b) noexcept { bytes_copied.fetch_add(b, std::memory_order_relaxed); }
-
-    inline void add_files_bytes_total(int n, io::file_size b) noexcept { add_files_total(n); add_bytes_total(b); }
-    inline void add_files_bytes_copied(int n, io::file_size b) noexcept { add_files_copied(n); add_bytes_copied(b); }
-
-    double percent_copied = 0;
-
-    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::time_point last_time = start_time;
-    long last_bytes = 0;
-    double speed = 0;
-
-    std::vector<std::tuple<node, node>> dir_attrs;
-    std::vector<node> rmdirs;
-
-    using file_id = std::tuple<io::device, io::index_node>;
-    std::map<file_id, std::vector<std::tuple<node, node>>> hardlinks;
+    message(E, std::forward<decltype (args)>(args)...);
+    failed.store(true, std::memory_order_relaxed);
 }
-ctx;
+
+void verbose(auto&&... args) {
+    if (verbose_) message(V, std::forward<decltype (args)>(args)...);
+}
 
 bool node::reopen(bool follow_links) noexcept
 {
@@ -138,14 +135,14 @@ bool node::reopen(bool follow_links) noexcept
     file = io::file{parent, name, follow_links ? io::follow_links : io::no_follow_links, ec};
     if (!ec) return true;
 
-    ctx.fail("access", file.path(), ec);
+    fail("access", file.path(), ec);
     return false;
 }
 
 bool confirm(std::string_view action, const node& target)
 {
-    if (ctx.copy_all) return true;
-    if (ctx.skip_all) return false;
+    if (copy_all) return true;
+    if (skip_all) return false;
 
     for (auto lock = get_print_lock();;)
     {
@@ -160,11 +157,11 @@ bool confirm(std::string_view action, const node& target)
             case 'y': case 'Y': case '\n': return true;
             case 'n': case 'N': return false;
 
-            case 'a': case 'A': ctx.copy_all = true; return true;
-            case 's': case 'S': ctx.skip_all = true; return false;
+            case 'a': case 'A': copy_all = true; return true;
+            case 's': case 'S': skip_all = true; return false;
 
             case EOF: std::print("q\n");
-            case 'q': case 'Q': ctx.exit = true; return false;
+            case 'q': case 'Q': exit_ = true; return false;
         }
     }
 }
@@ -175,15 +172,15 @@ bool copy_file(const node& source, const node& target, const io::copy_callback& 
     std::error_code ec;
     io::copy_file(source.file, target.parent, target.name, ec, cb);
 
-    if (ec == std::errc::permission_denied && ctx.unlink_ == unlink::force && target.file.is_regular_file())
+    if (ec == std::errc::permission_denied && unlink_ == unlink::force && target.file.is_regular_file())
     {
         std::error_code ed;
         io::remove(target.parent, target.name, ed);
         if (!ed) io::copy_file(source.file, target.parent, target.name, ec, cb);
     }
 
-    if (ec) { ctx.fail("copy", source.file.path(), target.file.path(), ec); return false; }
-    else { ctx.verbose("copy", source.file.path(), target.file.path()); return true; }
+    if (ec) { fail("copy", source.file.path(), target.file.path(), ec); return false; }
+    else { verbose("copy", source.file.path(), target.file.path()); return true; }
 }
 
 bool create_generic(std::string_view type, const node& node, auto&& create_fn)
@@ -191,8 +188,8 @@ bool create_generic(std::string_view type, const node& node, auto&& create_fn)
     std::error_code ec;
     create_fn(node, ec);
 
-    if (ec) { ctx.fail(type, node.file.path(), ec); return false; }
-    else { ctx.verbose(type, node.file.path()); return true; }
+    if (ec) { fail(type, node.file.path(), ec); return false; }
+    else { verbose(type, node.file.path()); return true; }
 }
 
 bool remove_file(const node& node)
@@ -201,7 +198,7 @@ bool remove_file(const node& node)
     io::remove(node.parent, node.name, ec);
     if (!ec) return true; // quiet success
 
-    ctx.fail("remove", node.file.path(), ec);
+    fail("remove", node.file.path(), ec);
     return false;
 }
 
@@ -211,7 +208,7 @@ bool rename_file(const node& source, const node& target)
     io::rename(source.parent, source.name, target.parent, target.name, ec);
     if (ec) return false; // quiet failure
 
-    ctx.verbose("move", source.file.path(), target.file.path());
+    verbose("move", source.file.path(), target.file.path());
     return true;
 }
 
@@ -226,10 +223,10 @@ void apply_attr(std::string_view type, const node& source, node& target, std::er
     {
         if (ed == not_permitted || ed == not_supported)
         {
-            if (ctx.verbose_) message(W, type, target.file.path(), ed);
-            ctx.attr_failed.store(true, std::memory_order_relaxed);
+            if (verbose_) message(W, type, target.file.path(), ed);
+            attrs_failed.store(true, std::memory_order_relaxed);
         }
-        else if (!ec) ctx.fail(type, target.file.path(), ec = ed);
+        else if (!ec) fail(type, target.file.path(), ec = ed);
     }
 }
 
@@ -240,52 +237,52 @@ bool apply_attrs(const node& source, node& target, bool announce = false)
     constexpr auto none = -1;
     io::user_id uid = none; io::group_id gid = none;
 
-    if (ctx.keep_user)
+    if (keep_user)
     {
-        if (!ctx.can_chown && source.file.user_id() != ctx.uid)
+        if (!can_chown && source.file.user_id() != uid)
         {
-            if (ctx.keep_mode)
+            if (keep_mode)
             {
                 auto new_mode = mode & ~(io::mode::set_uid | io::mode::set_gid);
                 if (new_mode != mode)
                 {
                     mode = new_mode;
-                    ctx.attr_failed.store(true, std::memory_order_relaxed);
+                    attrs_failed.store(true, std::memory_order_relaxed);
                 }
             }
         }
         else uid = source.file.user_id();
     }
-    if (ctx.keep_group) gid = source.file.group_id();
+    if (keep_group) gid = source.file.group_id();
 
     std::error_code ec;
 
     // owner must be first, as it will strip suid/sgid bits; time must be last
-    if (ctx.keep_user || ctx.keep_group) apply_attr("owner", source, target, ec,
+    if (keep_user || keep_group) apply_attr("owner", source, target, ec,
         [uid, gid](auto&&, auto&& tgt, std::error_code& ed) { tgt.owner(uid, gid, ed); }
     );
-    if (ctx.keep_mode) apply_attr("mode", source, target, ec,
+    if (keep_mode) apply_attr("mode", source, target, ec,
         [mode](auto&&, auto&& tgt, std::error_code& ed) { tgt.mode(mode, ed); }
     );
-    if (ctx.keep_acl) apply_attr("acl", source, target, ec,
+    if (keep_acl) apply_attr("acl", source, target, ec,
         [](auto&& src, auto&& tgt, std::error_code& ed) {
             auto acl = io::get_acl(src, ed); if (!ed) io::set_acl(tgt, acl, ed);
         }
     );
-    if (ctx.keep_time) apply_attr("time", source, target, ec,
+    if (keep_time) apply_attr("time", source, target, ec,
         [](auto&& src, auto&& tgt, std::error_code& ed) { tgt.time(src.time(), ed); }
     );
     if (ec) return false;
 
-    if (announce) ctx.verbose("attrs", target.file.path());
+    if (announce) verbose("attrs", target.file.path());
     return true;
 }
 
 bool queue_hardlink(const node& source, const node& target)
 {
-    if (ctx.keep_hardlinks && source.file.hardlink_count() > 1)
+    if (keep_hardlinks && source.file.hardlink_count() > 1)
     {
-        auto [it, new_] = ctx.hardlinks.try_emplace({ source.file.device(), source.file.index_node() });
+        auto [it, new_] = hardlinks.try_emplace({ source.file.device(), source.file.index_node() });
         it->second.emplace_back(source, target);
         return !new_;
     }
@@ -293,29 +290,31 @@ bool queue_hardlink(const node& source, const node& target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+enum class status { failed, skipped, moved, success };
+
 auto post_copy_file(node& source, node& target)
 {
-    ctx.semaphore->acquire();
+    semaphore->acquire();
     // we can steal source and target here
-    asio::post(*ctx.pool, [source = std::move(source), target = std::move(target)] mutable
+    asio::post(*pool, [source = std::move(source), target = std::move(target)] mutable
     {
-        struct scope_exit { ~scope_exit() { ctx.semaphore->release(); } } guard;
+        struct scope_exit { ~scope_exit() { semaphore->release(); } } guard;
 
-        if (ctx.exiting()) return;
+        if (exiting()) return;
 
         if (!copy_file(source, target, source.file.size()
-            ? [](io::file_size b) { ctx.add_bytes_copied(b); return !ctx.exiting(); }
-            : [](io::file_size b) { ctx.add_bytes_total(b); ctx.add_bytes_copied(b); return !ctx.exiting(); }
+            ? [](io::file_size b) { add_bytes_copied(b); return !exiting(); }
+            : [](io::file_size b) { add_bytes_total(b); add_bytes_copied(b); return !exiting(); }
         )) return;
 
-        if (ctx.keep_attrs())
+        if (keep_attrs())
         {
             if (!target.reopen()) return;
             if (!apply_attrs(source, target)) return;
         }
 
-        ctx.add_files_copied(1);
-        if (ctx.move) remove_file(source);
+        add_files_copied(1);
+        if (move) remove_file(source);
     });
 
     return status::success;
@@ -331,19 +330,19 @@ auto process_top_level(node& source, node& target)
 
     if (target.file)
     {
-        if (ctx.unlink_ == unlink::always)
+        if (unlink_ == unlink::always)
         {
             if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
         }
         else
         {
-            if (ctx.update_ == update::none) return status::skipped;
+            if (update_ == update::none) return status::skipped;
             if (!confirm("overwrite", target)) return status::skipped;
         }
     }
 
-    ctx.add_files_bytes_total(1, source.file.size());
+    add_files_bytes_total(1, source.file.size());
 
     return post_copy_file(source, target);
 }
@@ -354,10 +353,10 @@ auto process_file(node& source, node& target)
 
     if (target.file)
     {
-        if (!target.file.is_regular_file() || ctx.unlink_ == unlink::always)
+        if (!target.file.is_regular_file() || unlink_ == unlink::always)
         {
-            if (ctx.unlink_ == unlink::never) {
-                ctx.fail("exists", target.file.path()); return status::failed;
+            if (unlink_ == unlink::never) {
+                fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
@@ -366,7 +365,7 @@ auto process_file(node& source, node& target)
         }
         else
         {
-            switch (ctx.update_)
+            switch (update_)
             {
                 case update::none: return status::skipped;
                 case update::older:
@@ -387,13 +386,13 @@ auto process_file(node& source, node& target)
     }
     else copy = true;
 
-    ctx.add_files_bytes_total(1, source.file.size());
+    add_files_bytes_total(1, source.file.size());
 
     if (copy)
     {
-        if (ctx.move && rename_file(source, target))
+        if (move && rename_file(source, target))
         {
-            ctx.add_files_bytes_copied(1, source.file.size());
+            add_files_bytes_copied(1, source.file.size());
             return status::moved;
         }
         if (queue_hardlink(source, target)) return status::success;
@@ -402,10 +401,10 @@ auto process_file(node& source, node& target)
     else
     {
         if (queue_hardlink(source, target)) return status::success;
-        if (ctx.keep_attrs() && !apply_attrs(source, target, true)) return status::failed;
+        if (keep_attrs() && !apply_attrs(source, target, true)) return status::failed;
 
-        ctx.add_files_bytes_copied(1, source.file.size());
-        if (ctx.move) remove_file(source);
+        add_files_bytes_copied(1, source.file.size());
+        if (move) remove_file(source);
 
         return status::success;
     }
@@ -419,8 +418,8 @@ auto process_directory(node& source, node& target)
     {
         if (!target.file.is_directory())
         {
-            if (ctx.unlink_ == unlink::never) {
-                ctx.fail("exists", target.file.path()); return status::failed;
+            if (unlink_ == unlink::never) {
+                fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
@@ -430,13 +429,13 @@ auto process_directory(node& source, node& target)
     }
     else create = true;
 
-    ctx.add_files_total(1);
+    add_files_total(1);
 
     if (create)
     {
-        if (ctx.move && rename_file(source, target))
+        if (move && rename_file(source, target))
         {
-            ctx.add_files_copied(1);
+            add_files_copied(1);
             return status::moved;
         }
         if (!create_generic("create dir", target, 
@@ -446,10 +445,10 @@ auto process_directory(node& source, node& target)
         if (!target.reopen(io::no_follow_links)) return status::failed;
     }
 
-    if (ctx.keep_attrs()) ctx.dir_attrs.emplace_back(source, target);
-    else ctx.add_files_copied(1);
+    if (keep_attrs()) dir_attrs.emplace_back(source, target);
+    else add_files_copied(1);
 
-    if (ctx.move) ctx.rmdirs.push_back(source);
+    if (move) rmdirs.push_back(source);
 
     return status::success;
 }
@@ -460,27 +459,27 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
 
     if (target.file)
     {
-        if (!match_fn(source, target) || ctx.unlink_ == unlink::always)
+        if (!match_fn(source, target) || unlink_ == unlink::always)
         {
-            if (ctx.unlink_ == unlink::never) {
-                ctx.fail("exists", target.file.path()); return status::failed;
+            if (unlink_ == unlink::never) {
+                fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
 
             create = true;
         }
-        else if (ctx.update_ == update::none) return status::skipped;
+        else if (update_ == update::none) return status::skipped;
     }
     else create = true;
 
-    ctx.add_files_total(1);
+    add_files_total(1);
 
     if (create)
     {
-        if (ctx.move && rename_file(source, target))
+        if (move && rename_file(source, target))
         {
-            ctx.add_files_copied(1);
+            add_files_copied(1);
             return status::moved;
         }
         if (queue_hardlink(source, target)) return status::success;
@@ -488,14 +487,14 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
     }
     else if (queue_hardlink(source, target)) return status::success;
 
-    if (ctx.keep_attrs())
+    if (keep_attrs())
     {
         if (create && !target.reopen(io::no_follow_links)) return status::failed;
         if (!apply_attrs(source, target, !create)) return status::failed;
     }
 
-    ctx.add_files_copied(1);
-    if (ctx.move) remove_file(source);
+    add_files_copied(1);
+    if (move) remove_file(source);
 
     return status::success;
 }
@@ -504,7 +503,7 @@ auto process_symlink(node& source, node& target)
 {
     std::error_code ec;
     auto path = source.file.get_target_path(ec);
-    if (ec) { ctx.fail("read symlink", source.file.path(), ec); return status::failed; }
+    if (ec) { fail("read symlink", source.file.path(), ec); return status::failed; }
 
     return process_generic(source, target, "symlink",
         [&path](auto&& src, auto&& tgt) {
@@ -574,38 +573,38 @@ auto dispatch(node& source, node& target, bool top_level)
             return process_symlink(source, target);
 
         case io::file_type::block:
-            if (ctx.keep_devices) return process_block_device(source, target);
-            if (top_level && !ctx.move) return process_top_level(source, target);
+            if (keep_devices) return process_block_device(source, target);
+            if (top_level && !move) return process_top_level(source, target);
 
             message(I, "skipping block", source.file.path());
             return status::skipped;
 
         case io::file_type::character:
-            if (ctx.keep_devices) return process_char_device(source, target);
-            if (top_level && !ctx.move) return process_top_level(source, target);
+            if (keep_devices) return process_char_device(source, target);
+            if (top_level && !move) return process_top_level(source, target);
 
             message(I, "skipping char", source.file.path());
             return status::skipped;
 
         case io::file_type::fifo:
-            if (ctx.keep_special) return process_fifo(source, target);
-            if (top_level && !ctx.move) return process_top_level(source, target);
+            if (keep_special) return process_fifo(source, target);
+            if (top_level && !move) return process_top_level(source, target);
 
             message(I, "skipping fifo", source.file.path());
             return status::skipped;
 
         case io::file_type::socket:
-            if (ctx.keep_special) return process_socket(source, target);
-            if (top_level && !ctx.move) return process_top_level(source, target);
+            if (keep_special) return process_socket(source, target);
+            if (top_level && !move) return process_top_level(source, target);
 
             message(I, "skipping socket", source.file.path());
             return status::skipped;
 
         case io::file_type::not_found:
-            ctx.fail("not found", source.file.path());
+            fail("not found", source.file.path());
             return status::failed;
 
-        default: ctx.fail("unknown file", source.file.path());
+        default: fail("unknown file", source.file.path());
             return status::failed;
     }
 }
@@ -615,16 +614,16 @@ void copy_tree(node& source, node& target, bool top_level)
 {
     if (source.file.is_directory())
     {
-        if (ctx.recursive)
+        if (recursive)
         {
             if (dispatch(source, target, top_level) == status::success)
             {
                 for (auto&& name : io::directory_iterator(source.file))
                     if (name)
                     {
-                        if (ctx.exiting()) break;
+                        if (exiting()) break;
 
-                        node child_source{ source.file, *name, ctx.follow_links };
+                        node child_source{ source.file, *name, follow_links };
                         if (child_source.empty()) continue;
 
                         node child_target{ target.file, *name, !child_source.file.is_symlink() };
@@ -632,7 +631,7 @@ void copy_tree(node& source, node& target, bool top_level)
 
                         copy_tree(child_source, child_target, false);
                     }
-                    else ctx.fail("read dir", source.file.path(), name.error());
+                    else fail("read dir", source.file.path(), name.error());
             }
         }
         else message(I, "skipping dir", source.file.path());
@@ -640,13 +639,13 @@ void copy_tree(node& source, node& target, bool top_level)
     else dispatch(source, target, top_level);
 }
 
-void copy_all(std::vector<node>& sources, node& target)
+void copy_sources(std::vector<node>& sources, node& target)
 {
     if (target.file.is_directory())
     {
         for (auto&& source : sources)
         {
-            if (ctx.exiting()) break;
+            if (exiting()) break;
 
             if (source.name.has_filename()) // rsync-style behavior
             {
@@ -665,28 +664,12 @@ void copy_all(std::vector<node>& sources, node& target)
         copy_tree(source, target, true);
     }
     else if (sources.size() > 1)
-        ctx.fail("copy", target.file.path(), std::make_error_code(std::errc::not_a_directory));
-}
-
-void process_dirs()
-{
-    for (auto&& [source, target] : std::views::reverse(ctx.dir_attrs))
-    {
-        if (!apply_attrs(source, target, true)) continue;
-        ctx.add_files_copied(1);
-    }
-
-    for (auto&& node : std::views::reverse(ctx.rmdirs))
-    {
-        std::error_code ec;
-        io::remove_directory(node.parent, node.name, ec);
-        if (ec) ctx.fail("remove dir", node.file.path(), ec);
-    }
+        fail("copy", target.file.path(), std::make_error_code(std::errc::not_a_directory));
 }
 
 void process_hardlinks()
 {
-    for (auto&& [id, hardlinks] : ctx.hardlinks)
+    for (auto&& [id, hardlinks] : hardlinks)
     {
         auto it = hardlinks.begin();
         auto& [source, target] = *it;
@@ -704,12 +687,28 @@ void process_hardlinks()
             }
             if (!ec)
             {
-                ctx.verbose("hardlink", target.file.path(), link_target.file.path(), ec);
-                ctx.add_files_bytes_copied(1, source.file.size());
-                if (ctx.move) remove_file(link_source);
+                verbose("hardlink", target.file.path(), link_target.file.path(), ec);
+                add_files_bytes_copied(1, source.file.size());
+                if (move) remove_file(link_source);
             }
-            else ctx.fail("hardlink", link_target.file.path(), ec);
+            else fail("hardlink", link_target.file.path(), ec);
         }
+    }
+}
+
+void process_dirs()
+{
+    for (auto&& [source, target] : std::views::reverse(dir_attrs))
+    {
+        if (!apply_attrs(source, target, true)) continue;
+        add_files_copied(1);
+    }
+
+    for (auto&& node : std::views::reverse(rmdirs))
+    {
+        std::error_code ec;
+        io::remove_directory(node.parent, node.name, ec);
+        if (ec) fail("remove dir", node.file.path(), ec);
     }
 }
 
@@ -733,29 +732,29 @@ auto format_time(std::chrono::seconds dur)
 
 void show_progress(bool final = false)
 {
-    auto files_total = ctx.files_total.load(std::memory_order_relaxed);
-    auto files_copied = ctx.files_copied.load(std::memory_order_relaxed);
-    auto bytes_total = ctx.bytes_total.load(std::memory_order_relaxed);
-    auto bytes_copied = ctx.bytes_copied.load(std::memory_order_relaxed);
+    auto ft = files_total.load(std::memory_order_relaxed);
+    auto fc = files_copied.load(std::memory_order_relaxed);
+    auto bt = bytes_total.load(std::memory_order_relaxed);
+    auto bc = bytes_copied.load(std::memory_order_relaxed);
 
-    auto percent = bytes_total ? (100.0 * bytes_copied / bytes_total) : 100.0;
-    if (ctx.exiting()) ctx.percent_copied = percent;
-    else ctx.percent_copied += (percent - ctx.percent_copied) * 0.33;
+    auto pc = bt ? (100.0 * bc / bt) : 100.0;
+    if (exiting()) percent_copied = pc;
+    else percent_copied += (pc - percent_copied) * 0.33;
 
     using namespace std::chrono;
     auto now = steady_clock::now();
-    auto elapsed = duration_cast<seconds>(now - ctx.start_time);
+    auto elapsed = duration_cast<seconds>(now - start_time);
 
-    if (auto delta = duration<double>{now - ctx.last_time}.count())
+    if (auto delta = duration<double>{now - last_time}.count())
     {
-        auto speed = (bytes_copied - ctx.last_bytes) / delta;
-        ctx.speed = ctx.speed ? (ctx.speed + (speed - ctx.speed) * 0.1) : speed;
+        auto sp = (bc - last_bytes) / delta;
+        sp = sp ? (sp + (sp - sp) * 0.1) : sp;
 
-        ctx.last_time = now;
-        ctx.last_bytes = bytes_copied;
+        last_time = now;
+        last_bytes = bc;
     }
 
-    seconds eta{ ctx.speed ? static_cast<long>((bytes_total - bytes_copied) / ctx.speed) : 0 };
+    seconds eta{ speed ? static_cast<long>((bt - bc) / speed) : 0 };
 
     ////////////////////
     constexpr auto min_bar_width = 15, max_bar_width = 41;
@@ -763,9 +762,7 @@ void show_progress(bool final = false)
 
     auto width = io::term_width();
 
-    auto metric = std::format(" {}/{} ● {}/{}", files_copied, files_total,
-        format_bytes(bytes_copied), format_bytes(bytes_total)
-    );
+    auto metric = std::format(" {}/{} ● {}/{}", fc, ft, format_bytes(bc), format_bytes(bt));
     if (width > metric.size() - b_x)
     {
         width -= metric.size() - b_x;
@@ -777,8 +774,8 @@ void show_progress(bool final = false)
         {
             width -= time.size() - b_x;
 
-            auto speed = std::format(" ● {}/s", format_bytes(ctx.speed));
-            if (width > speed.size() - b_x) { width -= speed.size() - b_x; metric += speed; }
+            auto sp = std::format(" ● {}/s", format_bytes(speed));
+            if (width > sp.size() - b_x) { width -= sp.size() - b_x; metric += sp; }
 
             metric += time;
         }
@@ -790,7 +787,7 @@ void show_progress(bool final = false)
         if (width > metric.size()) width -= metric.size(); else metric.clear();
     }
 
-    auto bar = std::format(" {:>3.0f}%", ctx.percent_copied);
+    auto bar = std::format(" {:>3.0f}%", percent_copied);
     if (width > bar.size())
     {
         width -= bar.size();
@@ -800,7 +797,7 @@ void show_progress(bool final = false)
             if (width > max_bar_width) width = max_bar_width;
             bar += " "; width -= 2;
 
-            int done = ctx.percent_copied * width / 100;
+            int done = percent_copied * width / 100;
             for (auto n = 0; n < done; ++n) bar += "|";
             for (auto n = done; n < width; ++n) bar += ".";
         }
@@ -906,36 +903,36 @@ try
 
     else
     {
-        ctx.uid = io::effective_user_id();
-        ctx.can_chown = ctx.uid ? io::have_cap_chown() : true;
+        uid = io::effective_user_id();
+        can_chown = uid ? io::have_cap_chown() : true;
 
         if (args["--archive"])
         {
-            ctx.keep_devices = true;
-            ctx.keep_group = true;
-            ctx.keep_mode  = true;
-            ctx.keep_special = true;
-            ctx.keep_time  = true;
-            ctx.keep_user  = true;
-            ctx.recursive  = true;
-            ctx.unlink_ = unlink::force;
+            keep_devices = true;
+            keep_group = true;
+            keep_mode  = true;
+            keep_special = true;
+            keep_time  = true;
+            keep_user  = true;
+            recursive  = true;
+            unlink_ = unlink::force;
         }
-        if (args["--acl"        ]) ctx.keep_acl = true;
-        if (args["-D"           ]) ctx.keep_devices = ctx.keep_special = true;
-        if (args["--devices"    ]) ctx.keep_devices = true;
-        if (args["-f"           ]) ctx.unlink_ = unlink::force;
-        if (args["--group"      ]) ctx.keep_group = true;
-        if (args["--hard-links" ]) ctx.keep_hardlinks = true;
-        if (args["--interactive"]) ctx.copy_all = false;
-        if (args["--mode"       ]) ctx.keep_mode = true;
-        if (args["--move"       ] || name == "nmv") ctx.move = true;
-        if (args["--ownership"  ]) ctx.keep_group = ctx.keep_user = true;
-        if (args["--progress"   ]) ctx.progress = true;
-        if (args["--special"    ]) ctx.keep_special = true;
-        if (args["--time"       ]) ctx.keep_time = true;
-        if (args["-U"           ]) ctx.update_ = update::older;
-        if (args["--user"       ]) ctx.keep_user = true;
-        if (args["--verbose"    ]) ctx.verbose_  = true;
+        if (args["--acl"        ]) keep_acl = true;
+        if (args["-D"           ]) keep_devices = keep_special = true;
+        if (args["--devices"    ]) keep_devices = true;
+        if (args["-f"           ]) unlink_ = unlink::force;
+        if (args["--group"      ]) keep_group = true;
+        if (args["--hard-links" ]) keep_hardlinks = true;
+        if (args["--interactive"]) copy_all = false;
+        if (args["--mode"       ]) keep_mode = true;
+        if (args["--move"       ] || name == "nmv") move = true;
+        if (args["--ownership"  ]) keep_group = keep_user = true;
+        if (args["--progress"   ]) progress = true;
+        if (args["--special"    ]) keep_special = true;
+        if (args["--time"       ]) keep_time = true;
+        if (args["-U"           ]) update_ = update::older;
+        if (args["--user"       ]) keep_user = true;
+        if (args["--verbose"    ]) verbose_  = true;
 
         auto threads = 1;
         if (auto&& jobs = args["--jobs"])
@@ -943,40 +940,40 @@ try
             threads = parse(jobs.value()).value_or(-1);
             if (threads < 1 || threads > 16) throw pgm::invalid_argument{ "bad --jobs value '" + jobs.value() + "'"};
         }
-        ctx.pool.emplace(threads);
+        pool.emplace(threads);
 
-        if (args["--recursive"]) ctx.recursive = true;
+        if (args["--recursive"]) recursive = true;
         // keep symlinks in recursive mode by default
-        ctx.follow_links = !ctx.recursive;
+        follow_links = !recursive;
 
-        auto&& follow_links = args["--follow-links"];
-        auto&& keep_links = args["--keep-links"];
+        auto&& follow = args["--follow-links"];
+        auto&& keep = args["--keep-links"];
 
-        if (follow_links && keep_links) throw pgm::invalid_argument{
+        if (follow && keep) throw pgm::invalid_argument{
             "'--follow-links' and '--keep-links' are mutually exclusive"
         };
 
-        if (follow_links) ctx.follow_links = true;
-        else if (keep_links) ctx.follow_links = false;
+        if (follow) follow_links = true;
+        else if (keep) follow_links = false;
 
         if (auto&& unlink = args["--unlink"])
         {
             auto&& when = unlink.value();
-            if (when == "never") ctx.unlink_ = unlink::never;
-            else if (when.empty() || when == "always") ctx.unlink_ = unlink::always;
-            else if (when == "force") ctx.unlink_ = unlink::force;
-            else if (when == "auto") ctx.unlink_ = unlink::auto_;
+            if (when == "never") unlink_ = unlink::never;
+            else if (when.empty() || when == "always") unlink_ = unlink::always;
+            else if (when == "force") unlink_ = unlink::force;
+            else if (when == "auto") unlink_ = unlink::auto_;
             else throw pgm::invalid_argument{ "bad --unlink value '" + when + "'" };
         }
 
         if (auto&& update = args["--update"])
         {
             auto&& when = update.value();
-            if (when == "none") ctx.update_ = update::none;
-            else if (when == "all") ctx.update_ = update::all;
-            else if (when.empty() || when == "older") ctx.update_ = update::older;
-            else if (when == "changed") ctx.update_ = update::changed;
-            else if (when == "size") ctx.update_ = update::size;
+            if (when == "none") update_ = update::none;
+            else if (when == "all") update_ = update::all;
+            else if (when.empty() || when == "older") update_ = update::older;
+            else if (when == "changed") update_ = update::changed;
+            else if (when == "size") update_ = update::size;
             else throw pgm::invalid_argument{ "bad --update value '" + when + "'" };
         }
 
@@ -986,7 +983,7 @@ try
 
         for (auto&& path : args["SOURCE"].values())
         {
-            node source{ cwd, path, ctx.follow_links };
+            node source{ cwd, path, follow_links };
             if (!source.empty()) sources.push_back(std::move(source));
         }
 
@@ -999,7 +996,7 @@ try
             // but if --target was specified that value belongs in SOURCES
             if (destination_path)
             {
-                node source{ cwd, destination_path.value(), ctx.follow_links };
+                node source{ cwd, destination_path.value(), follow_links };
                 if (!source.empty()) sources.push_back(std::move(source));
             }
 
@@ -1014,49 +1011,49 @@ try
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
 
         ////////////////////
-        io::set_signal_callback([](int signal) { ctx.exit_signal = signal; ctx.exit = true; });
+        io::set_signal_callback([](int signal) { exit_signal = signal; exit_ = true; });
 
         std::error_code ec;
         auto max = io::max_open_file_limit(ec);
         if (!ec) io::set_open_file_limit(max, ec);
 
-        ctx.semaphore.emplace(max / 5); // 4 desc per task @ 80% capacity
+        semaphore.emplace(max / 5); // 4 desc per task @ 80% capacity
 
-        std::future<void> progress;
-        if (ctx.progress) progress = std::async(std::launch::async, []
+        std::future<void> progress_task;
+        if (progress) progress_task = std::async(std::launch::async, []
         {
-            while (!ctx.exiting())
+            while (!exiting())
             {
                 std::this_thread::sleep_for(100ms);
                 show_progress();
             }
         });
 
-        copy_all(sources, target);
-        ctx.pool->join();
+        copy_sources(sources, target);
+        pool->join();
 
-        if (!ctx.exit.exchange(true)) // don't process on Ctrl+C
+        if (!exit_.exchange(true)) // don't process on Ctrl+C
         {
             process_hardlinks();
             process_dirs();
         }
 
-        if (auto signal = ctx.exit_signal.exchange(0))
+        if (auto signal = exit_signal.exchange(0))
         {
             message(I, std::format("exiting - received signal {}", signal));
             code = interrupted;
         }
         else
         {
-            if (ctx.failed) code = copy_failed;
-            else if (ctx.attr_failed) code = attr_failed;
+            if (failed) code = copy_failed;
+            else if (attrs_failed) code = attr_failed;
 
-            if (ctx.attr_failed) message(W, "some attrs could not be preserved");
+            if (attr_failed) message(W, "some attrs could not be preserved");
         }
 
-        if (ctx.progress)
+        if (progress)
         {
-            progress.wait();
+            progress_task.wait();
             show_progress(true); // final status
         }
     }
