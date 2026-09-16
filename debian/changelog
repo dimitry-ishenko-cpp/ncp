@@ -1,3 +1,32 @@
+ncp (0.8) unstable; urgency=medium
+
+  * Prepare for 0.8
+  * ncp: attr_failed => partial_failed
+  * ncp: explicit follow_links
+  * ncp: tweak
+  * Move options into the options struct
+  * Move printing into the printer class
+  * Add smooth template
+  * ncp: fix typos
+  * ncp: syntax
+  * ncp: ditch context
+  * Update README.md
+  * ncp: add test for hardlinks
+  * ncp: add --hard-links option
+  * ncp: tweak
+  * Add more tests
+  * ncp: tweak
+  * ncp: better names
+  * ncp: tweak
+  * ncp: use tuple
+  * io: add create_hardlink()
+  * io: tweak
+  * io: progress_callback => copy_callback
+  * ncp: add --acl option
+  * Update README.md
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Wed, 16 Sep 2026 16:45:49 -0400
+
 ncp (0.7) unstable; urgency=medium
 
   * Prepare for 0.7
