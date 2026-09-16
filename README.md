@@ -5,7 +5,7 @@ Usage: ncp [option]... <SOURCE>... [DESTINATION]
 
 Options:
 -A, --acl              Preserve ACL (access control list).
--a, --archive          Archive mode (equivalent to -Dfmort
+-a, --archive          Archive mode (equivalent to -Dfmort).
 -D                     Same as --special --devices.
     --devices          Preserve device files.
 -f                     Same as --unlink=force.
