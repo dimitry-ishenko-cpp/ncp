@@ -748,7 +748,7 @@ void show_progress(bool final = false)
     if (auto delta = duration<double>{now - last_time}.count())
     {
         auto sp = (bc - last_bytes) / delta;
-        sp = sp ? (sp + (sp - sp) * 0.1) : sp;
+        speed = speed ? (speed + (sp - speed) * 0.1) : sp;
 
         last_time = now;
         last_bytes = bc;
@@ -1048,7 +1048,7 @@ try
             if (failed) code = copy_failed;
             else if (attrs_failed) code = attr_failed;
 
-            if (attr_failed) message(W, "some attrs could not be preserved");
+            if (attrs_failed) message(W, "some attrs could not be preserved");
         }
 
         if (progress)
