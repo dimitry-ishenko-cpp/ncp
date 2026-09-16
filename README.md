@@ -4,11 +4,13 @@
 Usage: ncp [option]... <SOURCE>... [DESTINATION]
 
 Options:
+-A, --acl              Preserve ACL (access control list).
 -a, --archive          Archive mode (equivalent to -Dfmort
 -D                     Same as --special --devices.
     --devices          Preserve device files.
 -f                     Same as --unlink=force.
 -g, --group            Preserve group ownership.
+-H, --hard-links       Preserve hard links.
 -h, --help             Show this help message and exit.
 -i, --interactive      Prompt before overwriting files.
 -j, --jobs=<N>         Number of files to copy in parallel (max: 16).
