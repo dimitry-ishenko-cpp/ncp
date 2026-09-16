@@ -7,15 +7,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "io/file.hpp"
 #include "io/misc.hpp"
-#include "message.hpp"
 #include "pgm/args.hpp"
-#include "smooth.hpp"
+#include "printer.hpp"
 
-#include <array>
 #include <asio.hpp>
 #include <atomic>
 #include <charconv> // std::from_chars
-#include <chrono>
 #include <cstdio> // std::getchar
 #include <exception>
 #include <format>
@@ -64,6 +61,16 @@ enum update update_ = update::all;
 bool verbose_ = false;
 
 ////////////////////////////////////////////////////////////////////////////////
+std::optional<asio::thread_pool> pool;
+std::optional<std::counting_semaphore<>> semaphore;
+
+std::atomic<int> exit_signal{0};
+std::atomic<bool> exit_{ false };
+inline bool exiting() noexcept { return exit_.load(std::memory_order_relaxed); }
+
+std::atomic<bool> failed{ false }, attrs_failed{ false };
+bool copy_all = true, skip_all = false;
+
 struct node
 {
     io::file parent;
@@ -80,54 +87,23 @@ struct node
     auto empty() const noexcept { return file.empty(); }
 };
 
-std::optional<asio::thread_pool> pool;
-std::optional<std::counting_semaphore<>> semaphore;
-
-std::atomic<int> exit_signal{0};
-std::atomic<bool> exit_{ false };
-inline bool exiting() noexcept { return exit_.load(std::memory_order_relaxed); }
-
-std::atomic<bool> failed{ false }, attrs_failed{ false };
-bool copy_all = true, skip_all = false;
-
 std::vector<std::tuple<node, node>> dir_attrs;
 std::vector<node> rmdirs;
 
 using file_id = std::tuple<io::device, io::index_node>;
 std::map<file_id, std::vector<std::tuple<node, node>>> hardlinks;
 
-std::atomic<int> files_total{0}, files_copied{0};
-std::atomic<io::file_size> bytes_total{0}, bytes_copied{0};
-
-inline void add_files_total(int n) noexcept { files_total.fetch_add(n, std::memory_order_relaxed); }
-inline void add_files_copied(int n) noexcept { files_copied.fetch_add(n, std::memory_order_relaxed); }
-
-inline void add_bytes_total(io::file_size b) noexcept { bytes_total.fetch_add(b, std::memory_order_relaxed); }
-inline void add_bytes_copied(io::file_size b) noexcept { bytes_copied.fetch_add(b, std::memory_order_relaxed); }
-
-inline void add_files_bytes_total(int n, io::file_size b) noexcept { add_files_total(n); add_bytes_total(b); }
-inline void add_files_bytes_copied(int n, io::file_size b) noexcept { add_files_copied(n); add_bytes_copied(b); }
-
-smooth<double> percent_copied{0, .33};
-
-std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
-std::chrono::steady_clock::time_point last_time = start_time;
-long last_bytes = 0;
-smooth<double> speed{.1};
-
-constexpr auto E = "E:";
-constexpr auto I = "I:";
-constexpr auto V = "V:";
-constexpr auto W = "W:";
+////////////////////////////////////////////////////////////////////////////////
+printer p;
 
 void fail(auto&&... args)
 {
-    message(E, std::forward<decltype (args)>(args)...);
+    p.print_error(std::forward<decltype (args)>(args)...);
     failed.store(true, std::memory_order_relaxed);
 }
 
 void verbose(auto&&... args) {
-    if (verbose_) message(V, std::forward<decltype (args)>(args)...);
+    if (verbose_) p.print_verbose(std::forward<decltype (args)>(args)...);
 }
 
 bool node::reopen(bool follow_links) noexcept
@@ -145,9 +121,9 @@ bool confirm(std::string_view action, const node& target)
     if (copy_all) return true;
     if (skip_all) return false;
 
-    for (auto lock = get_print_lock();;)
+    for (auto lock = p.get_print_lock();;)
     {
-        print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, target.file.path());
+        p.print_locked(retain, "{} '{}'? [Y/n/a/s/q] ", action, target.file.path());
 
         auto c = std::getchar();
         auto reply = c;
@@ -224,7 +200,7 @@ void apply_attr(std::string_view type, const node& source, node& target, std::er
     {
         if (ed == not_permitted || ed == not_supported)
         {
-            if (verbose_) message(W, type, target.file.path(), ed);
+            if (verbose_) p.print_warn(type, target.file.path(), ed);
             attrs_failed.store(true, std::memory_order_relaxed);
         }
         else if (!ec) fail(type, target.file.path(), ec = ed);
@@ -304,8 +280,8 @@ auto post_copy_file(node& source, node& target)
         if (exiting()) return;
 
         if (!copy_file(source, target, source.file.size()
-            ? [](io::file_size b) { add_bytes_copied(b); return !exiting(); }
-            : [](io::file_size b) { add_bytes_total(b); add_bytes_copied(b); return !exiting(); }
+            ? [](io::file_size b) { p.add_bytes_copied(b); return !exiting(); }
+            : [](io::file_size b) { p.add_bytes_total(b); p.add_bytes_copied(b); return !exiting(); }
         )) return;
 
         if (keep_attrs())
@@ -314,7 +290,7 @@ auto post_copy_file(node& source, node& target)
             if (!apply_attrs(source, target)) return;
         }
 
-        add_files_copied(1);
+        p.add_files_copied(1);
         if (move) remove_file(source);
     });
 
@@ -343,7 +319,7 @@ auto process_top_level(node& source, node& target)
         }
     }
 
-    add_files_bytes_total(1, source.file.size());
+    p.add_files_bytes_total(1, source.file.size());
 
     return post_copy_file(source, target);
 }
@@ -387,13 +363,13 @@ auto process_file(node& source, node& target)
     }
     else copy = true;
 
-    add_files_bytes_total(1, source.file.size());
+    p.add_files_bytes_total(1, source.file.size());
 
     if (copy)
     {
         if (move && rename_file(source, target))
         {
-            add_files_bytes_copied(1, source.file.size());
+            p.add_files_bytes_copied(1, source.file.size());
             return status::moved;
         }
         if (queue_hardlink(source, target)) return status::success;
@@ -404,7 +380,7 @@ auto process_file(node& source, node& target)
         if (queue_hardlink(source, target)) return status::success;
         if (keep_attrs() && !apply_attrs(source, target, true)) return status::failed;
 
-        add_files_bytes_copied(1, source.file.size());
+        p.add_files_bytes_copied(1, source.file.size());
         if (move) remove_file(source);
 
         return status::success;
@@ -430,13 +406,13 @@ auto process_directory(node& source, node& target)
     }
     else create = true;
 
-    add_files_total(1);
+    p.add_files_total(1);
 
     if (create)
     {
         if (move && rename_file(source, target))
         {
-            add_files_copied(1);
+            p.add_files_copied(1);
             return status::moved;
         }
         if (!create_generic("create dir", target, 
@@ -447,7 +423,7 @@ auto process_directory(node& source, node& target)
     }
 
     if (keep_attrs()) dir_attrs.emplace_back(source, target);
-    else add_files_copied(1);
+    else p.add_files_copied(1);
 
     if (move) rmdirs.push_back(source);
 
@@ -474,13 +450,13 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
     }
     else create = true;
 
-    add_files_total(1);
+    p.add_files_total(1);
 
     if (create)
     {
         if (move && rename_file(source, target))
         {
-            add_files_copied(1);
+            p.add_files_copied(1);
             return status::moved;
         }
         if (queue_hardlink(source, target)) return status::success;
@@ -494,7 +470,7 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
         if (!apply_attrs(source, target, !create)) return status::failed;
     }
 
-    add_files_copied(1);
+    p.add_files_copied(1);
     if (move) remove_file(source);
 
     return status::success;
@@ -556,7 +532,7 @@ auto dispatch(node& source, node& target, bool top_level)
 {
     if (target.file == source.file)
     {
-        message(I, "skipping same file", source.file.path(), target.file.path());
+        p.print_info("skipping same file", source.file.path(), target.file.path());
         return status::skipped;
     }
 
@@ -577,28 +553,28 @@ auto dispatch(node& source, node& target, bool top_level)
             if (keep_devices) return process_block_device(source, target);
             if (top_level && !move) return process_top_level(source, target);
 
-            message(I, "skipping block", source.file.path());
+            p.print_info("skipping block", source.file.path());
             return status::skipped;
 
         case io::file_type::character:
             if (keep_devices) return process_char_device(source, target);
             if (top_level && !move) return process_top_level(source, target);
 
-            message(I, "skipping char", source.file.path());
+            p.print_info("skipping char", source.file.path());
             return status::skipped;
 
         case io::file_type::fifo:
             if (keep_special) return process_fifo(source, target);
             if (top_level && !move) return process_top_level(source, target);
 
-            message(I, "skipping fifo", source.file.path());
+            p.print_info("skipping fifo", source.file.path());
             return status::skipped;
 
         case io::file_type::socket:
             if (keep_special) return process_socket(source, target);
             if (top_level && !move) return process_top_level(source, target);
 
-            message(I, "skipping socket", source.file.path());
+            p.print_info("skipping socket", source.file.path());
             return status::skipped;
 
         case io::file_type::not_found:
@@ -635,7 +611,7 @@ void copy_tree(node& source, node& target, bool top_level)
                     else fail("read dir", source.file.path(), name.error());
             }
         }
-        else message(I, "skipping dir", source.file.path());
+        else p.print_info("skipping dir", source.file.path());
     }
     else dispatch(source, target, top_level);
 }
@@ -689,7 +665,7 @@ void process_hardlinks()
             if (!ec)
             {
                 verbose("hardlink", target.file.path(), link_target.file.path(), ec);
-                add_files_bytes_copied(1, source.file.size());
+                p.add_files_bytes_copied(1, source.file.size());
                 if (move) remove_file(link_source);
             }
             else fail("hardlink", link_target.file.path(), ec);
@@ -702,7 +678,7 @@ void process_dirs()
     for (auto&& [source, target] : std::views::reverse(dir_attrs))
     {
         if (!apply_attrs(source, target, true)) continue;
-        add_files_copied(1);
+        p.add_files_copied(1);
     }
 
     for (auto&& node : std::views::reverse(rmdirs))
@@ -711,99 +687,6 @@ void process_dirs()
         io::remove_directory(node.parent, node.name, ec);
         if (ec) fail("remove dir", node.file.path(), ec);
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-auto format_bytes(long bytes)
-{
-    constexpr std::array units{"B", "KiB", "MiB", "GiB", "TiB"};
-
-    auto n = 0;
-    auto dbl_bytes = static_cast<double>(bytes);
-    for (; dbl_bytes >= 1024.0 && n < units.size() - 1; ++n) dbl_bytes /= 1024.0;
-
-    return std::format("{:.{}f}{}", dbl_bytes, n ? 2 : 0, units[n]);
-}
-
-auto format_time(std::chrono::seconds dur)
-{
-    if (dur >= 1h) return std::format("{:%H:%M:%S}", dur);
-    else return std::format("{:%M:%S}", dur);
-}
-
-void show_progress(bool final = false)
-{
-    auto ft = files_total.load(std::memory_order_relaxed);
-    auto fc = files_copied.load(std::memory_order_relaxed);
-    auto bt = bytes_total.load(std::memory_order_relaxed);
-    auto bc = bytes_copied.load(std::memory_order_relaxed);
-
-    auto pc = bt ? (100.0 * bc / bt) : 100.0;
-    if (exiting()) percent_copied.force(pc); else percent_copied = pc;
-
-    using namespace std::chrono;
-    auto now = steady_clock::now();
-    auto elapsed = duration_cast<seconds>(now - start_time);
-
-    if (auto delta = duration<double>{now - last_time}.count())
-    {
-        speed = (bc - last_bytes) / delta;
-
-        last_time = now;
-        last_bytes = bc;
-    }
-
-    seconds eta{ speed.value_or() ? static_cast<long>((bt - bc) / *speed) : 0 };
-
-    ////////////////////
-    constexpr auto min_bar_width = 15, max_bar_width = 41;
-    constexpr auto b_x = 2; // ● takes up 3 chars
-
-    auto width = io::term_width();
-
-    auto metric = std::format(" {}/{} ● {}/{}", fc, ft, format_bytes(bc), format_bytes(bt));
-    if (width > metric.size() - b_x)
-    {
-        width -= metric.size() - b_x;
-
-        std::string time;
-        if (final) time = std::format(" ● {}", format_time(elapsed), format_time(eta));
-        else time = std::format(" ● {} ETA {}", format_time(elapsed), format_time(eta));
-        if (width > time.size() - b_x)
-        {
-            width -= time.size() - b_x;
-
-            auto sp = std::format(" ● {}/s", format_bytes(*speed));
-            if (width > sp.size() - b_x) { width -= sp.size() - b_x; metric += sp; }
-
-            metric += time;
-        }
-    }
-    else
-    {
-        if (final) metric = std::format(" ● {}", format_time(elapsed), format_time(eta));
-        else metric = std::format(" ● {} ETA {}", format_time(elapsed), format_time(eta));
-        if (width > metric.size()) width -= metric.size(); else metric.clear();
-    }
-
-    auto bar = std::format(" {:>3.0f}%", *percent_copied);
-    if (width > bar.size())
-    {
-        width -= bar.size();
-
-        if (width > min_bar_width)
-        {
-            if (width > max_bar_width) width = max_bar_width;
-            bar += " "; width -= 2;
-
-            int done = *percent_copied * width / 100;
-            for (auto n = 0; n < done; ++n) bar += "|";
-            for (auto n = done; n < width; ++n) bar += ".";
-        }
-    }
-    else bar.clear();
-
-    print(replace, "{}{}\n", bar, metric);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1024,7 +907,7 @@ try
             while (!exiting())
             {
                 std::this_thread::sleep_for(100ms);
-                show_progress();
+                p.progress();
             }
         });
 
@@ -1039,7 +922,7 @@ try
 
         if (auto signal = exit_signal.exchange(0))
         {
-            message(I, std::format("exiting - received signal {}", signal));
+            p.print_info(std::format("exiting - received signal {}", signal));
             code = interrupted;
         }
         else
@@ -1047,13 +930,13 @@ try
             if (failed) code = copy_failed;
             else if (attrs_failed) code = attr_failed;
 
-            if (attrs_failed) message(W, "some attrs could not be preserved");
+            if (attrs_failed) p.print_warn("some attrs could not be preserved");
         }
 
         if (progress)
         {
             progress_task.wait();
-            show_progress(true); // final status
+            p.progress(final);
         }
     }
 
@@ -1061,11 +944,11 @@ try
 }
 catch (const io::exception& e)
 {
-    message(E, "access", e.path1(), e.code());
+    p.print_error("access", e.path1(), e.code());
     return invalid_argument;
 }
 catch (const std::exception& e)
 {
-    message(E, e.what());
+    p.print_error(e.what());
     return invalid_argument;
 };

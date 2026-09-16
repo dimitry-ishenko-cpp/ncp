@@ -13,8 +13,8 @@ include(GNUInstallDirs)
 add_executable(ncp
     io/file.cpp
     io/misc.cpp
-    message.cpp
     ncp.cpp
+    printer.cpp
 )
 target_link_libraries(ncp PRIVATE PkgConfig::acl PkgConfig::asio PkgConfig::cap)
 
