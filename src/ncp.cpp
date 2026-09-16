@@ -32,6 +32,9 @@
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
+options o;
+printer p;
+
 std::optional<asio::thread_pool> pool;
 std::optional<std::counting_semaphore<>> semaphore;
 
@@ -40,6 +43,16 @@ std::atomic<bool> exit_{ false };
 inline bool exiting() noexcept { return exit_.load(std::memory_order_relaxed); }
 
 std::atomic<bool> failed{ false }, attrs_failed{ false };
+
+void fail(auto&&... args)
+{
+    p.print_error(std::forward<decltype (args)>(args)...);
+    failed.store(true, std::memory_order_relaxed);
+}
+
+void verbose(auto&&... args) {
+    if (o.verbose) p.print_verbose(std::forward<decltype (args)>(args)...);
+}
 
 struct node
 {
@@ -52,7 +65,15 @@ struct node
         parent{std::move(parent)}, name{std::move(name)}
     { reopen(follow_links); }
 
-    bool reopen(bool follow_links = true) noexcept;
+    bool reopen(bool follow_links = true) noexcept
+    {
+        std::error_code ec;
+        file = io::file{parent, name, follow_links ? io::follow_links : io::no_follow_links, ec};
+        if (!ec) return true;
+
+        fail("access", file.path(), ec);
+        return false;
+    }
 
     auto empty() const noexcept { return file.empty(); }
 };
@@ -64,29 +85,6 @@ using file_id = std::tuple<io::device, io::index_node>;
 std::map<file_id, std::vector<std::tuple<node, node>>> hardlinks;
 
 ////////////////////////////////////////////////////////////////////////////////
-options o;
-printer p;
-
-void fail(auto&&... args)
-{
-    p.print_error(std::forward<decltype (args)>(args)...);
-    failed.store(true, std::memory_order_relaxed);
-}
-
-void verbose(auto&&... args) {
-    if (o.verbose) p.print_verbose(std::forward<decltype (args)>(args)...);
-}
-
-bool node::reopen(bool follow_links) noexcept
-{
-    std::error_code ec;
-    file = io::file{parent, name, follow_links ? io::follow_links : io::no_follow_links, ec};
-    if (!ec) return true;
-
-    fail("access", file.path(), ec);
-    return false;
-}
-
 bool confirm(std::string_view action, const node& target)
 {
     if (o.copy_all) return true;
