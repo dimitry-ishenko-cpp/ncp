@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ncp VERSION 0.7)
+project(ncp VERSION 0.8)
 
 add_definitions(-DVERSION="${PROJECT_VERSION}")
 
