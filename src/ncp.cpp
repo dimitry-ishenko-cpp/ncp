@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "io/file.hpp"
 #include "io/misc.hpp"
+#include "options.hpp"
 #include "pgm/args.hpp"
 #include "printer.hpp"
 
@@ -31,36 +32,6 @@
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
-bool can_chown = false;
-io::user_id uid = -1;
-
-bool follow_links = true;
-bool keep_acl = false;
-bool keep_devices = false;
-bool keep_group = false;
-bool keep_hardlinks = false;
-bool keep_mode = false;
-bool keep_special = false;
-bool keep_time = false;
-bool keep_user = false;
-
-constexpr bool keep_attrs() noexcept {
-    return keep_acl || keep_group || keep_mode || keep_time || keep_user;
-}
-
-bool move = false;
-bool progress = false;
-bool recursive = false;
-
-enum class unlink { never, always, force, auto_ };
-enum unlink unlink_ = unlink::auto_;
-
-enum class update { none, all, older, changed, size, };
-enum update update_ = update::all;
-
-bool verbose_ = false;
-
-////////////////////////////////////////////////////////////////////////////////
 std::optional<asio::thread_pool> pool;
 std::optional<std::counting_semaphore<>> semaphore;
 
@@ -69,7 +40,6 @@ std::atomic<bool> exit_{ false };
 inline bool exiting() noexcept { return exit_.load(std::memory_order_relaxed); }
 
 std::atomic<bool> failed{ false }, attrs_failed{ false };
-bool copy_all = true, skip_all = false;
 
 struct node
 {
@@ -94,6 +64,7 @@ using file_id = std::tuple<io::device, io::index_node>;
 std::map<file_id, std::vector<std::tuple<node, node>>> hardlinks;
 
 ////////////////////////////////////////////////////////////////////////////////
+options o;
 printer p;
 
 void fail(auto&&... args)
@@ -103,7 +74,7 @@ void fail(auto&&... args)
 }
 
 void verbose(auto&&... args) {
-    if (verbose_) p.print_verbose(std::forward<decltype (args)>(args)...);
+    if (o.verbose) p.print_verbose(std::forward<decltype (args)>(args)...);
 }
 
 bool node::reopen(bool follow_links) noexcept
@@ -118,8 +89,8 @@ bool node::reopen(bool follow_links) noexcept
 
 bool confirm(std::string_view action, const node& target)
 {
-    if (copy_all) return true;
-    if (skip_all) return false;
+    if (o.copy_all) return true;
+    if (o.skip_all) return false;
 
     for (auto lock = p.get_print_lock();;)
     {
@@ -134,8 +105,8 @@ bool confirm(std::string_view action, const node& target)
             case 'y': case 'Y': case '\n': return true;
             case 'n': case 'N': return false;
 
-            case 'a': case 'A': copy_all = true; return true;
-            case 's': case 'S': skip_all = true; return false;
+            case 'a': case 'A': o.copy_all = true; return true;
+            case 's': case 'S': o.skip_all = true; return false;
 
             case EOF: std::print("q\n");
             case 'q': case 'Q': exit_ = true; return false;
@@ -143,13 +114,12 @@ bool confirm(std::string_view action, const node& target)
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool copy_file(const node& source, const node& target, const io::copy_callback& cb)
 {
     std::error_code ec;
     io::copy_file(source.file, target.parent, target.name, ec, cb);
 
-    if (ec == std::errc::permission_denied && unlink_ == unlink::force && target.file.is_regular_file())
+    if (ec == std::errc::permission_denied && o.unlink == unlink::force && target.file.is_regular_file())
     {
         std::error_code ed;
         io::remove(target.parent, target.name, ed);
@@ -200,7 +170,7 @@ void apply_attr(std::string_view type, const node& source, node& target, std::er
     {
         if (ed == not_permitted || ed == not_supported)
         {
-            if (verbose_) p.print_warn(type, target.file.path(), ed);
+            if (o.verbose) p.print_warn(type, target.file.path(), ed);
             attrs_failed.store(true, std::memory_order_relaxed);
         }
         else if (!ec) fail(type, target.file.path(), ec = ed);
@@ -214,11 +184,11 @@ bool apply_attrs(const node& source, node& target, bool announce = false)
     constexpr auto none = -1;
     io::user_id uid = none; io::group_id gid = none;
 
-    if (keep_user)
+    if (o.keep_user)
     {
-        if (!can_chown && source.file.user_id() != uid)
+        if (!o.can_chown && source.file.user_id() != uid)
         {
-            if (keep_mode)
+            if (o.keep_mode)
             {
                 auto new_mode = mode & ~(io::mode::set_uid | io::mode::set_gid);
                 if (new_mode != mode)
@@ -230,23 +200,23 @@ bool apply_attrs(const node& source, node& target, bool announce = false)
         }
         else uid = source.file.user_id();
     }
-    if (keep_group) gid = source.file.group_id();
+    if (o.keep_group) gid = source.file.group_id();
 
     std::error_code ec;
 
     // owner must be first, as it will strip suid/sgid bits; time must be last
-    if (keep_user || keep_group) apply_attr("owner", source, target, ec,
+    if (o.keep_user || o.keep_group) apply_attr("owner", source, target, ec,
         [uid, gid](auto&&, auto&& tgt, std::error_code& ed) { tgt.owner(uid, gid, ed); }
     );
-    if (keep_mode) apply_attr("mode", source, target, ec,
+    if (o.keep_mode) apply_attr("mode", source, target, ec,
         [mode](auto&&, auto&& tgt, std::error_code& ed) { tgt.mode(mode, ed); }
     );
-    if (keep_acl) apply_attr("acl", source, target, ec,
+    if (o.keep_acl) apply_attr("acl", source, target, ec,
         [](auto&& src, auto&& tgt, std::error_code& ed) {
             auto acl = io::get_acl(src, ed); if (!ed) io::set_acl(tgt, acl, ed);
         }
     );
-    if (keep_time) apply_attr("time", source, target, ec,
+    if (o.keep_time) apply_attr("time", source, target, ec,
         [](auto&& src, auto&& tgt, std::error_code& ed) { tgt.time(src.time(), ed); }
     );
     if (ec) return false;
@@ -257,7 +227,7 @@ bool apply_attrs(const node& source, node& target, bool announce = false)
 
 bool queue_hardlink(const node& source, const node& target)
 {
-    if (keep_hardlinks && source.file.hardlink_count() > 1)
+    if (o.keep_hardlinks && source.file.hardlink_count() > 1)
     {
         auto [it, new_] = hardlinks.try_emplace({ source.file.device(), source.file.index_node() });
         it->second.emplace_back(source, target);
@@ -284,14 +254,14 @@ auto post_copy_file(node& source, node& target)
             : [](io::file_size b) { p.add_bytes_total(b); p.add_bytes_copied(b); return !exiting(); }
         )) return;
 
-        if (keep_attrs())
+        if (o.keep_attrs())
         {
             if (!target.reopen()) return;
             if (!apply_attrs(source, target)) return;
         }
 
         p.add_files_copied(1);
-        if (move) remove_file(source);
+        if (o.move) remove_file(source);
     });
 
     return status::success;
@@ -307,14 +277,14 @@ auto process_top_level(node& source, node& target)
 
     if (target.file)
     {
-        if (unlink_ == unlink::always)
+        if (o.unlink == unlink::always)
         {
             if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
         }
         else
         {
-            if (update_ == update::none) return status::skipped;
+            if (o.update == update::none) return status::skipped;
             if (!confirm("overwrite", target)) return status::skipped;
         }
     }
@@ -330,9 +300,9 @@ auto process_file(node& source, node& target)
 
     if (target.file)
     {
-        if (!target.file.is_regular_file() || unlink_ == unlink::always)
+        if (!target.file.is_regular_file() || o.unlink == unlink::always)
         {
-            if (unlink_ == unlink::never) {
+            if (o.unlink == unlink::never) {
                 fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
@@ -342,7 +312,7 @@ auto process_file(node& source, node& target)
         }
         else
         {
-            switch (update_)
+            switch (o.update)
             {
                 case update::none: return status::skipped;
                 case update::older:
@@ -367,7 +337,7 @@ auto process_file(node& source, node& target)
 
     if (copy)
     {
-        if (move && rename_file(source, target))
+        if (o.move && rename_file(source, target))
         {
             p.add_files_bytes_copied(1, source.file.size());
             return status::moved;
@@ -378,10 +348,10 @@ auto process_file(node& source, node& target)
     else
     {
         if (queue_hardlink(source, target)) return status::success;
-        if (keep_attrs() && !apply_attrs(source, target, true)) return status::failed;
+        if (o.keep_attrs() && !apply_attrs(source, target, true)) return status::failed;
 
         p.add_files_bytes_copied(1, source.file.size());
-        if (move) remove_file(source);
+        if (o.move) remove_file(source);
 
         return status::success;
     }
@@ -395,7 +365,7 @@ auto process_directory(node& source, node& target)
     {
         if (!target.file.is_directory())
         {
-            if (unlink_ == unlink::never) {
+            if (o.unlink == unlink::never) {
                 fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
@@ -410,7 +380,7 @@ auto process_directory(node& source, node& target)
 
     if (create)
     {
-        if (move && rename_file(source, target))
+        if (o.move && rename_file(source, target))
         {
             p.add_files_copied(1);
             return status::moved;
@@ -422,10 +392,10 @@ auto process_directory(node& source, node& target)
         if (!target.reopen(io::no_follow_links)) return status::failed;
     }
 
-    if (keep_attrs()) dir_attrs.emplace_back(source, target);
+    if (o.keep_attrs()) dir_attrs.emplace_back(source, target);
     else p.add_files_copied(1);
 
-    if (move) rmdirs.push_back(source);
+    if (o.move) rmdirs.push_back(source);
 
     return status::success;
 }
@@ -436,9 +406,9 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
 
     if (target.file)
     {
-        if (!match_fn(source, target) || unlink_ == unlink::always)
+        if (!match_fn(source, target) || o.unlink == unlink::always)
         {
-            if (unlink_ == unlink::never) {
+            if (o.unlink == unlink::never) {
                 fail("exists", target.file.path()); return status::failed;
             }
             if (!confirm("replace", target)) return status::skipped;
@@ -446,7 +416,7 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
 
             create = true;
         }
-        else if (update_ == update::none) return status::skipped;
+        else if (o.update == update::none) return status::skipped;
     }
     else create = true;
 
@@ -454,7 +424,7 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
 
     if (create)
     {
-        if (move && rename_file(source, target))
+        if (o.move && rename_file(source, target))
         {
             p.add_files_copied(1);
             return status::moved;
@@ -464,14 +434,14 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
     }
     else if (queue_hardlink(source, target)) return status::success;
 
-    if (keep_attrs())
+    if (o.keep_attrs())
     {
         if (create && !target.reopen(io::no_follow_links)) return status::failed;
         if (!apply_attrs(source, target, !create)) return status::failed;
     }
 
     p.add_files_copied(1);
-    if (move) remove_file(source);
+    if (o.move) remove_file(source);
 
     return status::success;
 }
@@ -550,29 +520,29 @@ auto dispatch(node& source, node& target, bool top_level)
             return process_symlink(source, target);
 
         case io::file_type::block:
-            if (keep_devices) return process_block_device(source, target);
-            if (top_level && !move) return process_top_level(source, target);
+            if (o.keep_devices) return process_block_device(source, target);
+            if (top_level && !o.move) return process_top_level(source, target);
 
             p.print_info("skipping block", source.file.path());
             return status::skipped;
 
         case io::file_type::character:
-            if (keep_devices) return process_char_device(source, target);
-            if (top_level && !move) return process_top_level(source, target);
+            if (o.keep_devices) return process_char_device(source, target);
+            if (top_level && !o.move) return process_top_level(source, target);
 
             p.print_info("skipping char", source.file.path());
             return status::skipped;
 
         case io::file_type::fifo:
-            if (keep_special) return process_fifo(source, target);
-            if (top_level && !move) return process_top_level(source, target);
+            if (o.keep_special) return process_fifo(source, target);
+            if (top_level && !o.move) return process_top_level(source, target);
 
             p.print_info("skipping fifo", source.file.path());
             return status::skipped;
 
         case io::file_type::socket:
-            if (keep_special) return process_socket(source, target);
-            if (top_level && !move) return process_top_level(source, target);
+            if (o.keep_special) return process_socket(source, target);
+            if (top_level && !o.move) return process_top_level(source, target);
 
             p.print_info("skipping socket", source.file.path());
             return status::skipped;
@@ -591,7 +561,7 @@ void copy_tree(node& source, node& target, bool top_level)
 {
     if (source.file.is_directory())
     {
-        if (recursive)
+        if (o.recursive)
         {
             if (dispatch(source, target, top_level) == status::success)
             {
@@ -600,7 +570,7 @@ void copy_tree(node& source, node& target, bool top_level)
                     {
                         if (exiting()) break;
 
-                        node child_source{ source.file, *name, follow_links };
+                        node child_source{ source.file, *name, o.follow_links };
                         if (child_source.empty()) continue;
 
                         node child_target{ target.file, *name, !child_source.file.is_symlink() };
@@ -666,7 +636,7 @@ void process_hardlinks()
             {
                 verbose("hardlink", target.file.path(), link_target.file.path(), ec);
                 p.add_files_bytes_copied(1, source.file.size());
-                if (move) remove_file(link_source);
+                if (o.move) remove_file(link_source);
             }
             else fail("hardlink", link_target.file.path(), ec);
         }
@@ -785,36 +755,36 @@ try
 
     else
     {
-        uid = io::effective_user_id();
-        can_chown = uid ? io::have_cap_chown() : true;
+        o.uid = io::effective_user_id();
+        o.can_chown = o.uid ? io::have_cap_chown() : true;
 
         if (args["--archive"])
         {
-            keep_devices = true;
-            keep_group = true;
-            keep_mode  = true;
-            keep_special = true;
-            keep_time  = true;
-            keep_user  = true;
-            recursive  = true;
-            unlink_ = unlink::force;
+            o.keep_devices = true;
+            o.keep_group = true;
+            o.keep_mode  = true;
+            o.keep_special = true;
+            o.keep_time  = true;
+            o.keep_user  = true;
+            o.recursive  = true;
+            o.unlink = unlink::force;
         }
-        if (args["--acl"        ]) keep_acl = true;
-        if (args["-D"           ]) keep_devices = keep_special = true;
-        if (args["--devices"    ]) keep_devices = true;
-        if (args["-f"           ]) unlink_ = unlink::force;
-        if (args["--group"      ]) keep_group = true;
-        if (args["--hard-links" ]) keep_hardlinks = true;
-        if (args["--interactive"]) copy_all = false;
-        if (args["--mode"       ]) keep_mode = true;
-        if (args["--move"       ] || name == "nmv") move = true;
-        if (args["--ownership"  ]) keep_group = keep_user = true;
-        if (args["--progress"   ]) progress = true;
-        if (args["--special"    ]) keep_special = true;
-        if (args["--time"       ]) keep_time = true;
-        if (args["-U"           ]) update_ = update::older;
-        if (args["--user"       ]) keep_user = true;
-        if (args["--verbose"    ]) verbose_  = true;
+        if (args["--acl"        ]) o.keep_acl = true;
+        if (args["-D"           ]) o.keep_devices = o.keep_special = true;
+        if (args["--devices"    ]) o.keep_devices = true;
+        if (args["-f"           ]) o.unlink = unlink::force;
+        if (args["--group"      ]) o.keep_group = true;
+        if (args["--hard-links" ]) o.keep_hardlinks = true;
+        if (args["--interactive"]) o.copy_all = false;
+        if (args["--mode"       ]) o.keep_mode = true;
+        if (args["--move"       ] || name == "nmv") o.move = true;
+        if (args["--ownership"  ]) o.keep_group = o.keep_user = true;
+        if (args["--progress"   ]) o.progress = true;
+        if (args["--special"    ]) o.keep_special = true;
+        if (args["--time"       ]) o.keep_time = true;
+        if (args["-U"           ]) o.update = update::older;
+        if (args["--user"       ]) o.keep_user = true;
+        if (args["--verbose"    ]) o.verbose  = true;
 
         auto threads = 1;
         if (auto&& jobs = args["--jobs"])
@@ -824,9 +794,9 @@ try
         }
         pool.emplace(threads);
 
-        if (args["--recursive"]) recursive = true;
+        if (args["--recursive"]) o.recursive = true;
         // keep symlinks in recursive mode by default
-        follow_links = !recursive;
+        o.follow_links = !o.recursive;
 
         auto&& follow = args["--follow-links"];
         auto&& keep = args["--keep-links"];
@@ -835,27 +805,27 @@ try
             "'--follow-links' and '--keep-links' are mutually exclusive"
         };
 
-        if (follow) follow_links = true;
-        else if (keep) follow_links = false;
+        if (follow) o.follow_links = true;
+        else if (keep) o.follow_links = false;
 
         if (auto&& unlink = args["--unlink"])
         {
             auto&& when = unlink.value();
-            if (when == "never") unlink_ = unlink::never;
-            else if (when.empty() || when == "always") unlink_ = unlink::always;
-            else if (when == "force") unlink_ = unlink::force;
-            else if (when == "auto") unlink_ = unlink::auto_;
+            if (when == "never") o.unlink = unlink::never;
+            else if (when.empty() || when == "always") o.unlink = unlink::always;
+            else if (when == "force") o.unlink = unlink::force;
+            else if (when == "auto") o.unlink = unlink::auto_;
             else throw pgm::invalid_argument{ "bad --unlink value '" + when + "'" };
         }
 
         if (auto&& update = args["--update"])
         {
             auto&& when = update.value();
-            if (when == "none") update_ = update::none;
-            else if (when == "all") update_ = update::all;
-            else if (when.empty() || when == "older") update_ = update::older;
-            else if (when == "changed") update_ = update::changed;
-            else if (when == "size") update_ = update::size;
+            if (when == "none") o.update = update::none;
+            else if (when == "all") o.update = update::all;
+            else if (when.empty() || when == "older") o.update = update::older;
+            else if (when == "changed") o.update = update::changed;
+            else if (when == "size") o.update = update::size;
             else throw pgm::invalid_argument{ "bad --update value '" + when + "'" };
         }
 
@@ -865,7 +835,7 @@ try
 
         for (auto&& path : args["SOURCE"].values())
         {
-            node source{ cwd, path, follow_links };
+            node source{ cwd, path, o.follow_links };
             if (!source.empty()) sources.push_back(std::move(source));
         }
 
@@ -878,7 +848,7 @@ try
             // but if --target was specified that value belongs in SOURCES
             if (destination_path)
             {
-                node source{ cwd, destination_path.value(), follow_links };
+                node source{ cwd, destination_path.value(), o.follow_links };
                 if (!source.empty()) sources.push_back(std::move(source));
             }
 
@@ -902,7 +872,7 @@ try
         semaphore.emplace(max / 5); // 4 desc per task @ 80% capacity
 
         std::future<void> progress_task;
-        if (progress) progress_task = std::async(std::launch::async, []
+        if (o.progress) progress_task = std::async(std::launch::async, []
         {
             while (!exiting())
             {
@@ -933,7 +903,7 @@ try
             if (attrs_failed) p.print_warn("some attrs could not be preserved");
         }
 
-        if (progress)
+        if (o.progress)
         {
             progress_task.wait();
             p.progress(final);
