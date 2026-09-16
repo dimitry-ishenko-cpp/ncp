@@ -65,7 +65,7 @@ struct node
         parent{std::move(parent)}, name{std::move(name)}
     { reopen(follow_links); }
 
-    bool reopen(bool follow_links = true) noexcept
+    bool reopen(bool follow_links) noexcept
     {
         std::error_code ec;
         file = io::file{parent, name, follow_links ? io::follow_links : io::no_follow_links, ec};
@@ -254,7 +254,7 @@ auto post_copy_file(node& source, node& target)
 
         if (o.keep_attrs())
         {
-            if (!target.reopen()) return;
+            if (!target.reopen(io::follow_links)) return;
             if (!apply_attrs(source, target)) return;
         }
 
