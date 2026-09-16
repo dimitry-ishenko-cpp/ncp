@@ -19,6 +19,7 @@
 #include <exception>
 #include <format>
 #include <future>
+#include <map>
 #include <optional>
 #include <print>
 #include <ranges> // std::views::reverse
@@ -66,6 +67,7 @@ struct context
     bool keep_acl = false;
     bool keep_devices = false;
     bool keep_group = false;
+    bool keep_hardlinks = false;
     bool keep_mode = false;
     bool keep_special = false;
     bool keep_time = false;
@@ -124,6 +126,9 @@ struct context
 
     std::vector<std::tuple<node, node>> dir_attrs;
     std::vector<node> rmdirs;
+
+    using file_id = std::tuple<io::device, io::index_node>;
+    std::map<file_id, std::vector<std::tuple<node, node>>> hardlinks;
 }
 ctx;
 
@@ -276,6 +281,17 @@ bool apply_attrs(const node& source, node& target, bool announce = false)
     return true;
 }
 
+bool queue_hardlink(const node& source, const node& target)
+{
+    if (ctx.keep_hardlinks && source.file.hardlink_count() > 1)
+    {
+        auto [it, new_] = ctx.hardlinks.try_emplace({ source.file.device(), source.file.index_node() });
+        it->second.emplace_back(source, target);
+        return !new_;
+    }
+    return false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 auto post_copy_file(node& source, node& target)
 {
@@ -380,10 +396,12 @@ auto process_file(node& source, node& target)
             ctx.add_files_bytes_copied(1, source.file.size());
             return status::moved;
         }
+        if (queue_hardlink(source, target)) return status::success;
         return post_copy_file(source, target);
     }
     else
     {
+        if (queue_hardlink(source, target)) return status::success;
         if (ctx.keep_attrs() && !apply_attrs(source, target, true)) return status::failed;
 
         ctx.add_files_bytes_copied(1, source.file.size());
@@ -465,8 +483,10 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
             ctx.add_files_copied(1);
             return status::moved;
         }
+        if (queue_hardlink(source, target)) return status::success;
         if (!create_generic(type, target, create_fn)) return status::failed;
     }
+    else if (queue_hardlink(source, target)) return status::success;
 
     if (ctx.keep_attrs())
     {
@@ -664,6 +684,35 @@ void process_dirs()
     }
 }
 
+void process_hardlinks()
+{
+    for (auto&& [id, hardlinks] : ctx.hardlinks)
+    {
+        auto it = hardlinks.begin();
+        auto& [source, target] = *it;
+
+        for (++it; it != hardlinks.end(); ++it)
+        {
+            auto& [link_source, link_target] = *it;
+
+            std::error_code ec;
+            io::create_hardlink(target.parent, target.name, link_target.parent, link_target.name, ec);
+            if (ec == std::errc::file_exists)
+            {
+                remove_file(link_target);
+                io::create_hardlink(target.parent, target.name, link_target.parent, link_target.name, ec);
+            }
+            if (!ec)
+            {
+                ctx.verbose("hardlink", target.file.path(), link_target.file.path(), ec);
+                ctx.add_files_bytes_copied(1, source.file.size());
+                if (ctx.move) remove_file(link_source);
+            }
+            else ctx.fail("hardlink", link_target.file.path(), ec);
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 auto format_bytes(long bytes)
 {
@@ -808,6 +857,7 @@ try
         {       "--devices",        "Preserve device files."                            },
         { "-f",                     "Same as --unlink=force."                           },
         { "-g", "--group",          "Preserve group ownership."                         },
+        { "-H", "--hard-links",     "Preserve hard links."                              },
         { "-h", "--help",           "Show this help message and exit."                  },
         { "-i", "--interactive",    "Prompt before overwriting files."                  },
         { "-j", "--jobs", "N",      "Number of files to copy in parallel (max: 16)."    },
@@ -875,6 +925,7 @@ try
         if (args["--devices"    ]) ctx.keep_devices = true;
         if (args["-f"           ]) ctx.unlink_ = unlink::force;
         if (args["--group"      ]) ctx.keep_group = true;
+        if (args["--hard-links" ]) ctx.keep_hardlinks = true;
         if (args["--interactive"]) ctx.copy_all = false;
         if (args["--mode"       ]) ctx.keep_mode = true;
         if (args["--move"       ] || name == "nmv") ctx.move = true;
@@ -984,8 +1035,11 @@ try
         copy_all(sources, target);
         ctx.pool->join();
 
-        // don't process dirs on Ctrl+C
-        if (!ctx.exit.exchange(true)) process_dirs();
+        if (!ctx.exit.exchange(true)) // don't process on Ctrl+C
+        {
+            process_hardlinks();
+            process_dirs();
+        }
 
         if (auto signal = ctx.exit_signal.exchange(0))
         {
