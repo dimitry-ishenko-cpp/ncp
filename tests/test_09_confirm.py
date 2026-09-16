@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+import pytest
+import stat
 
 
 def test_confirm_yes(tmp_path, monkeypatch, run_ncp):

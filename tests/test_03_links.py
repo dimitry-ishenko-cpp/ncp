@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+import pytest
+import stat
 
 
 def test_copy_thru_link(tmp_path, monkeypatch, run_ncp):

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import pytest
 import stat
 from time import time
 
@@ -51,6 +52,19 @@ def test_update_older(tmp_path, monkeypatch, run_ncp):
     res = run_ncp("--update", "--", "source", "target")
     assert res.returncode == 0
     assert Path("target").read_text() == "source"
+
+
+def test_U_older(tmp_path, monkeypatch, run_ncp):
+    monkeypatch.chdir(tmp_path)
+    Path("source").write_text("source")
+    Path("target").write_text("target")
+    now = time()
+    os.utime("source", (now - 100, now - 100))
+    os.utime("target", (now, now))
+ 
+    res = run_ncp("-U", "source", "target")
+    assert res.returncode == 0
+    assert Path("target").read_text() == "target"
 
 
 def test_no_update_size(tmp_path, monkeypatch, run_ncp):
@@ -119,3 +133,14 @@ def test_no_unlink_auto(tmp_path, monkeypatch, run_ncp):
     res = run_ncp("source", "target")
     assert res.returncode == 0
     assert Path("target").stat().st_ino == old_ino
+
+
+def test_f(tmp_path, monkeypatch, run_ncp):
+    monkeypatch.chdir(tmp_path)
+    Path("source").write_text("source")
+    Path("target").write_text("target")
+    old_ino = Path("target").stat().st_ino
+ 
+    res = run_ncp("-f", "source", "target")
+    assert res.returncode == 0
+    assert Path("target").read_text() == "source"
