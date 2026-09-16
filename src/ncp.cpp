@@ -687,7 +687,7 @@ enum exit_code
     invalid_argument = 1,
     interrupted = 2,
     copy_failed = 3,
-    attr_failed = 4,
+    partial_failed = 4,
 };
 
 int main(int argc, char* argv[])
@@ -896,7 +896,7 @@ try
         else
         {
             if (failed) code = copy_failed;
-            else if (attrs_failed) code = attr_failed;
+            else if (attrs_failed) code = partial_failed;
 
             if (attrs_failed) p.print_warn("some attrs could not be preserved");
         }
