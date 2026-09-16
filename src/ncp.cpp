@@ -9,6 +9,7 @@
 #include "io/misc.hpp"
 #include "message.hpp"
 #include "pgm/args.hpp"
+#include "smooth.hpp"
 
 #include <array>
 #include <asio.hpp>
@@ -107,12 +108,12 @@ inline void add_bytes_copied(io::file_size b) noexcept { bytes_copied.fetch_add(
 inline void add_files_bytes_total(int n, io::file_size b) noexcept { add_files_total(n); add_bytes_total(b); }
 inline void add_files_bytes_copied(int n, io::file_size b) noexcept { add_files_copied(n); add_bytes_copied(b); }
 
-double percent_copied = 0;
+smooth<double> percent_copied{0, .33};
 
 std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
 std::chrono::steady_clock::time_point last_time = start_time;
 long last_bytes = 0;
-double speed = 0;
+smooth<double> speed{.1};
 
 constexpr auto E = "E:";
 constexpr auto I = "I:";
@@ -738,8 +739,7 @@ void show_progress(bool final = false)
     auto bc = bytes_copied.load(std::memory_order_relaxed);
 
     auto pc = bt ? (100.0 * bc / bt) : 100.0;
-    if (exiting()) percent_copied = pc;
-    else percent_copied += (pc - percent_copied) * 0.33;
+    if (exiting()) percent_copied.force(pc); else percent_copied = pc;
 
     using namespace std::chrono;
     auto now = steady_clock::now();
@@ -747,14 +747,13 @@ void show_progress(bool final = false)
 
     if (auto delta = duration<double>{now - last_time}.count())
     {
-        auto sp = (bc - last_bytes) / delta;
-        speed = speed ? (speed + (sp - speed) * 0.1) : sp;
+        speed = (bc - last_bytes) / delta;
 
         last_time = now;
         last_bytes = bc;
     }
 
-    seconds eta{ speed ? static_cast<long>((bt - bc) / speed) : 0 };
+    seconds eta{ speed.value_or() ? static_cast<long>((bt - bc) / *speed) : 0 };
 
     ////////////////////
     constexpr auto min_bar_width = 15, max_bar_width = 41;
@@ -774,7 +773,7 @@ void show_progress(bool final = false)
         {
             width -= time.size() - b_x;
 
-            auto sp = std::format(" ● {}/s", format_bytes(speed));
+            auto sp = std::format(" ● {}/s", format_bytes(*speed));
             if (width > sp.size() - b_x) { width -= sp.size() - b_x; metric += sp; }
 
             metric += time;
@@ -787,7 +786,7 @@ void show_progress(bool final = false)
         if (width > metric.size()) width -= metric.size(); else metric.clear();
     }
 
-    auto bar = std::format(" {:>3.0f}%", percent_copied);
+    auto bar = std::format(" {:>3.0f}%", *percent_copied);
     if (width > bar.size())
     {
         width -= bar.size();
@@ -797,7 +796,7 @@ void show_progress(bool final = false)
             if (width > max_bar_width) width = max_bar_width;
             bar += " "; width -= 2;
 
-            int done = percent_copied * width / 100;
+            int done = *percent_copied * width / 100;
             for (auto n = 0; n < done; ++n) bar += "|";
             for (auto n = done; n < width; ++n) bar += ".";
         }
