@@ -775,7 +775,6 @@ try
         if (args["--hard-links" ]) o.keep_hardlinks = true;
         if (args["--interactive"]) o.copy_all = false;
         if (args["--mode"       ]) o.keep_mode = true;
-        if (args["--move"       ] || name == "nmv") o.move = true;
         if (args["--ownership"  ]) o.keep_group = o.keep_user = true;
         if (args["--progress"   ]) o.progress = true;
         if (args["--special"    ]) o.keep_special = true;
@@ -793,17 +792,32 @@ try
         pool.emplace(threads);
 
         if (args["--recursive"]) o.recursive = true;
-        // keep symlinks in recursive mode by default
-        o.follow_links = !o.recursive;
+        o.follow_links = !o.recursive; // don't follow symlinks in recursive mode by default
 
         auto&& follow = args["--follow-links"];
         auto&& keep = args["--keep-links"];
+
+        auto&& move = args["--move"];
+        bool nmv = (name == "nmv");
 
         if (follow && keep) throw pgm::invalid_argument{
             "'--follow-links' and '--keep-links' are mutually exclusive"
         };
 
-        if (follow) o.follow_links = true;
+        if (follow && nmv) throw pgm::invalid_argument{
+            "'--follow-links' cannot be used with 'nmv'"
+        };
+
+        if (follow && move) throw pgm::invalid_argument{
+            "'--follow-links' cannot be used with '--move'"
+        };
+
+        if (move || nmv)
+        {
+            o.follow_links = false; // don't follow symlinks when moving
+            o.move = true;
+        }
+        else if (follow) o.follow_links = true;
         else if (keep) o.follow_links = false;
 
         if (auto&& unlink = args["--unlink"])
