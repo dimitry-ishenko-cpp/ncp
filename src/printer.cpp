@@ -61,7 +61,7 @@ void printer::progress(report report)
     remain = seconds{ speed.value_or() ? static_cast<io::file_size>((bt - bc) / *speed) : 0 };
 
     ////////////////////
-    constexpr auto min_bar_width = 10, max_bar_width = 30;
+    constexpr auto min_bar_width = 20, max_bar_width = 40;
     constexpr auto b_x = 2; // "●" takes up 3 chars
 
     auto width = io::term_width();
