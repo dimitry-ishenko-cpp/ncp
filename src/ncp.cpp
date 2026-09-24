@@ -712,6 +712,7 @@ try
         { "-L", "--follow-links",   "Dereference source symlinks (default when non-recursive)." },
         { "-M", "--move",           "Remove source files after copying."                },
         { "-m", "--mode",           "Preserve file permissions (mode bits)."            },
+        { "-n",                     "Same as --unlink=never."                           },
         { "-o", "--ownership",      "Same as --user --group."                           },
         { "-P", "--keep-links",     "Preserve source symlinks (default when recursive)."},
         { "-p", "--progress",       "Show progress bar."                                },
@@ -771,7 +772,6 @@ try
         if (args["--acl"        ]) o.keep_acl = true;
         if (args["-D"           ]) o.keep_devices = o.keep_special = true;
         if (args["--devices"    ]) o.keep_devices = true;
-        if (args["-f"           ]) o.unlink = unlink::force;
         if (args["--group"      ]) o.keep_group = true;
         if (args["--hard-links" ]) o.keep_hardlinks = true;
         if (args["--interactive"]) o.copy_all = false;
@@ -821,7 +821,15 @@ try
         else if (follow) o.follow_links = true;
         else if (keep) o.follow_links = false;
 
-        if (auto&& unlink = args["--unlink"])
+        auto&& unlink = args["--unlink"];
+        auto&& f = args["-f"];
+        auto&& n = args["-n"];
+
+        if ((unlink && f) || (unlink && n) || (f && n)) throw pgm::invalid_argument{
+            "'--unlink', '-f' and '-n' are mutually exclusive"
+        };
+
+        if (unlink)
         {
             auto&& when = unlink.value();
             if (when == "never") o.unlink = unlink::never;
@@ -830,6 +838,8 @@ try
             else if (when == "auto") o.unlink = unlink::auto_;
             else throw pgm::invalid_argument{ "bad --unlink value '" + when + "'" };
         }
+        else if (f) o.unlink = unlink::force;
+        else if (n) o.unlink = unlink::never;
 
         auto&& update = args["--update"];
         auto&& U = args["-U"];
