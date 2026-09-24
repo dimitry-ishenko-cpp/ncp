@@ -794,21 +794,21 @@ try
         if (args["--recursive"]) o.recursive = true;
         o.follow_links = !o.recursive; // don't follow symlinks in recursive mode by default
 
-        auto&& follow = args["--follow-links"];
-        auto&& keep = args["--keep-links"];
+        auto&& follow_links = args["--follow-links"];
+        auto&& keep_links = args["--keep-links"];
 
         auto&& move = args["--move"];
         bool nmv = (name == "nmv");
 
-        if (follow && keep) throw pgm::invalid_argument{
+        if (follow_links && keep_links) throw pgm::invalid_argument{
             "'--follow-links' and '--keep-links' are mutually exclusive"
         };
 
-        if (follow && nmv) throw pgm::invalid_argument{
+        if (follow_links && nmv) throw pgm::invalid_argument{
             "'--follow-links' cannot be used with 'nmv'"
         };
 
-        if (follow && move) throw pgm::invalid_argument{
+        if (follow_links && move) throw pgm::invalid_argument{
             "'--follow-links' cannot be used with '--move'"
         };
 
@@ -818,8 +818,8 @@ try
             o.move = true;
             o.recursive = true; // turn on recursive mode when moving
         }
-        else if (follow) o.follow_links = true;
-        else if (keep) o.follow_links = false;
+        else if (follow_links) o.follow_links = true;
+        else if (keep_links) o.follow_links = false;
 
         auto&& unlink = args["--unlink"];
         auto&& f = args["-f"];
@@ -870,25 +870,25 @@ try
             if (!source.empty()) sources.push_back(std::move(source));
         }
 
-        auto&& destination_path = args["DESTINATION"];
-        auto&& target_path = args["--target"];
+        auto&& destination = args["DESTINATION"];
+        auto&& target_dir = args["--target"];
 
-        if (target_path)
+        if (target_dir)
         {
             // DESTINATION will capture the last positional parameter,
             // but if --target was specified that value belongs in SOURCES
-            if (destination_path)
+            if (destination)
             {
-                node source{ cwd, destination_path.value(), o.follow_links };
+                node source{ cwd, destination.value(), o.follow_links };
                 if (!source.empty()) sources.push_back(std::move(source));
             }
 
-            target = node{ cwd, target_path.value(), io::follow_links };
+            target = node{ cwd, target_dir.value(), io::follow_links };
             if (target.empty()) throw pgm::invalid_argument{"target path"};
         }
-        else if (destination_path)
+        else if (destination)
         {
-            target = node{ cwd, destination_path.value(), io::follow_links };
+            target = node{ cwd, destination.value(), io::follow_links };
             if (target.empty()) throw pgm::invalid_argument{"destination path"};
         }
         else throw pgm::missing_argument{"neither DESTINATION nor --target was specified"};
