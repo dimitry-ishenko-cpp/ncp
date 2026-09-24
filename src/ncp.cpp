@@ -817,6 +817,7 @@ try
         {
             o.follow_links = false; // don't follow symlinks when moving
             o.move = true;
+            o.recursive = true; // turn on recursive mode when moving
         }
         else if (follow) o.follow_links = true;
         else if (keep) o.follow_links = false;
