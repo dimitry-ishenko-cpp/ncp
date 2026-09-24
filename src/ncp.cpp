@@ -267,11 +267,12 @@ auto post_copy_file(node& source, node& target)
 
 auto process_top_level(node& source, node& target)
 {
-    // device/special => new
-    // device/special => file
-    // device/special => dir
-    // device/special => device/special
-    // regular => device/special
+    // called only in these cases:
+    // * device/special => new
+    // * device/special => file
+    // * device/special => dir
+    // * device/special => device/special
+    // * regular => device/special
 
     if (target.file)
     {
