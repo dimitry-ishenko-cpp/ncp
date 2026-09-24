@@ -780,7 +780,6 @@ try
         if (args["--progress"   ]) o.progress = true;
         if (args["--special"    ]) o.keep_special = true;
         if (args["--time"       ]) o.keep_time = true;
-        if (args["-U"           ]) o.update = update::older;
         if (args["--user"       ]) o.keep_user = true;
         if (args["--verbose"    ]) o.verbose  = true;
 
@@ -832,7 +831,14 @@ try
             else throw pgm::invalid_argument{ "bad --unlink value '" + when + "'" };
         }
 
-        if (auto&& update = args["--update"])
+        auto&& update = args["--update"];
+        auto&& U = args["-U"];
+
+        if (update && U) throw pgm::invalid_argument{
+            "'--update' and '-U' are mutually exclusive"
+        };
+
+        if (update)
         {
             auto&& when = update.value();
             if (when == "none") o.update = update::none;
@@ -842,6 +848,7 @@ try
             else if (when == "size") o.update = update::size;
             else throw pgm::invalid_argument{ "bad --update value '" + when + "'" };
         }
+        else if (U) o.update = update::older;
 
         const io::file cwd;
         std::vector<node> sources;
