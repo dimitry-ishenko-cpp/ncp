@@ -299,23 +299,18 @@ auto process_file(node& source, node& target)
 
     if (target.file)
     {
-        if (!target.file.is_regular_file() || o.unlink == unlink::always)
+        if (o.unlink == unlink::always)
         {
-            if (o.unlink == unlink::never) {
-                fail("exists", target.file.path()); return status::failed;
-            }
             if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
-
             copy = true;
         }
-        else
+        else if (target.file.is_regular_file())
         {
             switch (o.update)
             {
                 case update::none: return status::skipped;
-                case update::older:
-                    // don't touch newer files
+                case update::older: // don't touch newer files
                     if (target.file.time() >= source.file.time()) return status::skipped;
                     copy = true;
                     break;
@@ -325,9 +320,25 @@ auto process_file(node& source, node& target)
                 case update::size:
                     copy = target.file.size() != source.file.size();
                     break;
-                default: copy = true; // update::all
+                case update::all: copy = true; break;
             }
             if (copy && !confirm("overwrite", target)) return status::skipped;
+        }
+        else
+        {
+            switch (o.update)
+            {
+                case update::none: return status::skipped;
+                case update::older: // don't touch newer files
+                    if (target.file.time() >= source.file.time()) return status::skipped;
+                default: ;
+            }
+            if (o.unlink == unlink::never) {
+                fail("exists", target.file.path()); return status::failed;
+            }
+            if (!confirm("replace", target)) return status::skipped;
+            if (!remove_file(target)) return status::failed;
+            copy = true;
         }
     }
     else copy = true;
@@ -405,17 +416,31 @@ auto process_generic(node& source, node& target, std::string_view type, auto&& m
 
     if (target.file)
     {
-        if (!match_fn(source, target) || o.unlink == unlink::always)
+        if (o.unlink == unlink::always)
         {
-            if (o.unlink == unlink::never) {
-                fail("exists", target.file.path()); return status::failed;
-            }
             if (!confirm("replace", target)) return status::skipped;
             if (!remove_file(target)) return status::failed;
-
             create = true;
         }
-        else if (o.update == update::none) return status::skipped;
+        else
+        {
+            switch (o.update)
+            {
+                case update::none: return status::skipped;
+                case update::older: // don't touch newer files
+                    if (target.file.time() >= source.file.time()) return status::skipped;
+                default: ;
+            }
+            if (!match_fn(source, target))
+            {
+                if (o.unlink == unlink::never) {
+                    fail("exists", target.file.path()); return status::failed;
+                }
+                if (!confirm("replace", target)) return status::skipped;
+                if (!remove_file(target)) return status::failed;
+                create = true;
+            }
+        }
     }
     else create = true;
 
