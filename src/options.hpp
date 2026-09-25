@@ -20,6 +20,7 @@ struct options
 
     bool copy_all = true;
     bool follow_links = true;
+    bool follow_target = true;
     bool keep_acl = false;
     bool keep_devices = false;
     bool keep_group = false;

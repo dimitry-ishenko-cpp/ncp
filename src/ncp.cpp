@@ -597,7 +597,8 @@ void copy_tree(node& source, node& target, bool top_level)
                         node child_source{ source.file, *name, o.follow_links };
                         if (child_source.empty()) continue;
 
-                        node child_target{ target.file, *name, !child_source.file.is_symlink() };
+                        bool follow_target = o.follow_target && !child_source.file.is_symlink();
+                        node child_target{ target.file, *name, follow_target };
                         if (child_target.empty()) continue;
 
                         copy_tree(child_source, child_target, false);
@@ -618,21 +619,24 @@ void copy_sources(std::vector<node>& sources, node& target)
         {
             if (exiting()) break;
 
-            if (source.name.has_filename()) // rsync-style behavior
+            if (source.name.has_filename()) // rsync-like behavior
             {
-                node new_target{ target.file, source.name.filename(), !source.file.is_symlink() };
+                bool follow_target = o.follow_target && !source.file.is_symlink();
+                node new_target{ target.file, source.name.filename(), follow_target };
                 if (new_target.empty()) continue;
 
-                copy_tree(source, new_target, true);
+                copy_tree(source, new_target, true); // ??? => dir/???
             }
-            else copy_tree(source, target, true); // no need to reopen - source is a dir (ends with /)
+            else copy_tree(source, target, true); // dir/ => dir
         }
     }
     else if (sources.size() == 1)
     {
         auto& source = sources.front();
-        if (source.file.is_symlink() && !target.reopen(io::no_follow_links)) return;
-        copy_tree(source, target, true);
+        bool follow_target = o.follow_target && !source.file.is_symlink();
+        if (!follow_target && !target.reopen(io::no_follow_links)) return;
+
+        copy_tree(source, target, true); // ??? => !dir
     }
     else if (sources.size() > 1)
         fail("copy", target.file.path(), std::make_error_code(std::errc::not_a_directory));
@@ -840,6 +844,7 @@ try
         if (move || nmv)
         {
             o.follow_links = false; // don't follow symlinks when moving
+            o.follow_target= false; //
             o.move = true;
             o.recursive = true; // turn on recursive mode when moving
         }
