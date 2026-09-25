@@ -597,7 +597,8 @@ void copy_tree(node& source, node& target, bool top_level)
                         node child_source{ source.file, *name, o.follow_links };
                         if (child_source.empty()) continue;
 
-                        node child_target{ target.file, *name, !child_source.file.is_symlink() };
+                        bool follow_target = o.follow_target && !source.file.is_symlink();
+                        node child_target{ target.file, *name, follow_target };
                         if (child_target.empty()) continue;
 
                         copy_tree(child_source, child_target, false);
@@ -620,7 +621,8 @@ void copy_sources(std::vector<node>& sources, node& target)
 
             if (source.name.has_filename()) // rsync-style behavior
             {
-                node new_target{ target.file, source.name.filename(), !source.file.is_symlink() };
+                bool follow_target = o.follow_target && !source.file.is_symlink();
+                node new_target{ target.file, source.name.filename(), follow_target };
                 if (new_target.empty()) continue;
 
                 copy_tree(source, new_target, true);
@@ -631,7 +633,9 @@ void copy_sources(std::vector<node>& sources, node& target)
     else if (sources.size() == 1)
     {
         auto& source = sources.front();
-        if (source.file.is_symlink() && !target.reopen(io::no_follow_links)) return;
+        bool follow_target = o.follow_target && !source.file.is_symlink();
+        if (!follow_target && !target.reopen(io::no_follow_links)) return;
+
         copy_tree(source, target, true);
     }
     else if (sources.size() > 1)
@@ -840,6 +844,7 @@ try
         if (move || nmv)
         {
             o.follow_links = false; // don't follow symlinks when moving
+            o.follow_target= false; //
             o.move = true;
             o.recursive = true; // turn on recursive mode when moving
         }
