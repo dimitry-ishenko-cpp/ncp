@@ -476,6 +476,16 @@ auto process_symlink(node& source, node& target)
     auto path = source.file.get_target_path(ec);
     if (ec) { fail("read symlink", source.file.path(), ec); return status::failed; }
 
+    if (target.file)
+    {
+        io::file file{source.parent, source.name, io::follow_links, ec};
+        if (file == target.file)
+        {
+            fail("link to target", source.file.path(), target.file.path());
+            return status::failed;
+        }
+    }
+
     return process_generic(source, target, "symlink",
         [&path](auto&& src, auto&& tgt) {
             std::error_code ec;
