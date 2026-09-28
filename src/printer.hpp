@@ -37,7 +37,7 @@ class printer
     clock::time_point start_time = clock::now();
     clock::time_point tick = start_time;
     io::file_size prev_bytes_copied = 0;
-    smooth<double> speed{.1};
+    smooth<double> speed{.01};
     seconds elapse, remain;
 
     ////////////////////
