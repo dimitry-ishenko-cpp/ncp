@@ -11,6 +11,7 @@
 #include "pgm/args.hpp"
 #include "printer.hpp"
 
+#include <algorithm> // std::min
 #include <asio.hpp>
 #include <atomic>
 #include <charconv> // std::from_chars
@@ -952,10 +953,16 @@ try
         io::set_signal_callback([](int signal) { exit_signal = signal; exit_ = true; });
 
         std::error_code ec;
-        auto max = io::max_open_file_limit(ec);
-        if (!ec) io::set_open_file_limit(max, ec);
+        auto nofile = io::max_open_file_limit(ec);
+        if (!ec)
+        {
+            nofile = std::min<decltype(nofile)>(nofile, 500'000);
+            io::set_open_file_limit(nofile, ec);
+        }
+        if (ec) nofile = 50'000;
 
-        semaphore.emplace(max / 5); // 4 desc per task @ 80% capacity
+        auto max = std::counting_semaphore<>::max();
+        semaphore.emplace(std::min<decltype(nofile)>(nofile / 5, max)); // 4 desc per task @ 80% capacity
 
         std::future<void> progress_task;
         if (o.progress) progress_task = std::async(std::launch::async, []
