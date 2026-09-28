@@ -687,7 +687,7 @@ void process_hardlinks()
             }
             if (!ec)
             {
-                verbose("hardlink", target.file.path(), link_target.file.path(), ec);
+                verbose("hardlink", target.file.path(), link_target.file.path());
                 p.add_files_bytes_copied(1, source.file.size());
                 if (o.move) remove_file(link_source);
             }
