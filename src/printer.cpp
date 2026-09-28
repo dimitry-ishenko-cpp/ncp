@@ -56,9 +56,10 @@ void printer::progress(report report)
         tick = now;
         prev_bytes_copied = bc;
     }
+    auto spd = speed.value_or(0);
 
     elapse = std::chrono::duration_cast<seconds>(now - start_time);
-    remain = seconds{ speed.value_or() ? static_cast<io::file_size>((bt - bc) / *speed) : 0 };
+    remain = seconds{ spd ? static_cast<io::file_size>((bt - bc) / spd) : 0 };
 
     ////////////////////
     constexpr auto min_bar_width = 20, max_bar_width = 40;
@@ -79,8 +80,8 @@ void printer::progress(report report)
         {
             width -= time.size() - b_x;
 
-            auto spd = std::format(" ● {}/s", format_bytes(*speed));
-            if (width > spd.size() - b_x) { width -= spd.size() - b_x; metric += spd; }
+            auto speed = std::format(" ● {}/s", format_bytes(spd));
+            if (width > speed.size() - b_x) { width -= speed.size() - b_x; metric += speed; }
 
             metric += time;
         }
