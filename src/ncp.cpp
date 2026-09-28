@@ -265,14 +265,11 @@ auto post_copy_file(node& source, node& target)
     return status::success;
 }
 
-auto process_top_level(node& source, node& target)
+auto process_stream(node& source, node& target)
 {
-    // called only in these cases:
-    // * device/special => new
-    // * device/special => file
-    // * device/special => dir
-    // * device/special => device/special
+    // called only when:
     // * regular => device/special
+    // * device/special => new/file/dir/device/special
 
     if (target.file)
     {
@@ -314,7 +311,7 @@ auto process_file(node& source, node& target)
                     if (target.file.time() >= source.file.time()) return status::skipped;
                     copy = true;
                     break;
-                case update::changed: 
+                case update::changed:
                     copy = target.file.size() != source.file.size() || target.file.time() != source.file.time();
                     break;
                 case update::size:
@@ -395,7 +392,7 @@ auto process_directory(node& source, node& target)
             p.add_files_copied(1);
             return status::moved;
         }
-        if (!create_generic("create dir", target, 
+        if (!create_generic("create dir", target,
             [](auto&& node, std::error_code& ec) { io::create_directory(node.parent, node.name, ec); }
         )) return status::failed;
 
@@ -532,7 +529,7 @@ auto process_socket(node& source, node& target)
         [](auto&& tgt, std::error_code& ec) { io::create_socket(tgt.parent, tgt.name, ec); });
 }
 
-auto dispatch(node& source, node& target, bool top_level)
+auto dispatch(node& source, node& target)
 {
     if (target.file == source.file)
     {
@@ -543,9 +540,7 @@ auto dispatch(node& source, node& target, bool top_level)
     switch (source.file.type())
     {
         case io::file_type::regular:
-            if (top_level && (target.file.is_device() || target.file.is_special()))
-                return process_top_level(source, target);
-            else return process_file(source, target);
+            return process_file(source, target);
 
         case io::file_type::directory:
             return process_directory(source, target);
@@ -555,29 +550,21 @@ auto dispatch(node& source, node& target, bool top_level)
 
         case io::file_type::block:
             if (o.keep_devices) return process_block_device(source, target);
-            if (top_level && !o.move) return process_top_level(source, target);
-
             p.print_info("skipping block", source.file.path());
             return status::skipped;
 
         case io::file_type::character:
             if (o.keep_devices) return process_char_device(source, target);
-            if (top_level && !o.move) return process_top_level(source, target);
-
             p.print_info("skipping char", source.file.path());
             return status::skipped;
 
         case io::file_type::fifo:
             if (o.keep_special) return process_fifo(source, target);
-            if (top_level && !o.move) return process_top_level(source, target);
-
             p.print_info("skipping fifo", source.file.path());
             return status::skipped;
 
         case io::file_type::socket:
             if (o.keep_special) return process_socket(source, target);
-            if (top_level && !o.move) return process_top_level(source, target);
-
             p.print_info("skipping socket", source.file.path());
             return status::skipped;
 
@@ -591,13 +578,13 @@ auto dispatch(node& source, node& target, bool top_level)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void copy_tree(node& source, node& target, bool top_level)
+void copy_tree(node& source, node& target)
 {
     if (source.file.is_directory())
     {
         if (o.recursive)
         {
-            if (dispatch(source, target, top_level) == status::success)
+            if (dispatch(source, target) == status::success)
             {
                 for (auto&& name : io::directory_iterator(source.file))
                     if (name)
@@ -611,14 +598,42 @@ void copy_tree(node& source, node& target, bool top_level)
                         node child_target{ target.file, *name, follow_target };
                         if (child_target.empty()) continue;
 
-                        copy_tree(child_source, child_target, false);
+                        copy_tree(child_source, child_target);
                     }
                     else fail("read dir", source.file.path(), name.error());
             }
         }
         else p.print_info("skipping dir", source.file.path());
     }
-    else dispatch(source, target, top_level);
+    else dispatch(source, target);
+}
+
+void copy_source(node& source, node& target)
+{
+    bool stream = false;
+
+    if (!o.move)
+        switch (source.file.type())
+        {
+            case io::file_type::regular:
+                stream = target.file.is_device() || target.file.is_special();
+                break;
+
+            case io::file_type::block:
+            case io::file_type::character:
+                stream = !o.keep_devices;
+                break;
+
+            case io::file_type::fifo:
+            case io::file_type::socket:
+                stream = !o.keep_special;
+                break;
+
+            default:;
+        }
+
+    if (stream) process_stream(source, target);
+    else copy_tree(source, target);
 }
 
 void copy_sources(std::vector<node>& sources, node& target)
@@ -635,9 +650,9 @@ void copy_sources(std::vector<node>& sources, node& target)
                 node new_target{ target.file, source.name.filename(), follow_target };
                 if (new_target.empty()) continue;
 
-                copy_tree(source, new_target, true); // ??? => dir/???
+                copy_source(source, new_target); // ??? => dir/???
             }
-            else copy_tree(source, target, true); // dir/ => dir
+            else copy_source(source, target); // dir/ => dir
         }
     }
     else if (sources.size() == 1)
@@ -646,7 +661,7 @@ void copy_sources(std::vector<node>& sources, node& target)
         bool follow_target = o.follow_target && !source.file.is_symlink();
         if (!follow_target && !target.reopen(io::no_follow_links)) return;
 
-        copy_tree(source, target, true); // ??? => !dir
+        copy_source(source, target); // ??? => !dir
     }
     else if (sources.size() > 1)
         fail("copy", target.file.path(), std::make_error_code(std::errc::not_a_directory));
