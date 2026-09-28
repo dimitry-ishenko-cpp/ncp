@@ -200,8 +200,8 @@ void copy_file(const file& source, const file& target_parent, const path& target
         {
             if (errno == EINTR) continue;
             // not supported
-            if (errno == EINVAL  || errno == ENOSYS ||
-                errno == ENOTSUP || errno == EOPNOTSUPP || errno == EXDEV) break;
+            if (errno == EINVAL || errno == ENOSYS  ||
+                errno == EXDEV  || errno == ENOTSUP || errno == EOPNOTSUPP) break;
 
             ec = error_code(errno);
             return;
