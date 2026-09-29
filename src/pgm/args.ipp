@@ -345,7 +345,7 @@ inline std::string args::usage(std::string_view program, std::string_view preamb
     }
 
     ////////////////////
-    auto cell_0 = "Usage: " + std::string{program};
+    auto cell_0 = std::string{bold} + "Usage:" + std::string{norm} + " " + std::string{program};
 
     if (options_.size()) cell_0 += " [option]...";
     if (params_.size())
@@ -371,7 +371,7 @@ inline std::string args::usage(std::string_view program, std::string_view preamb
     if (options_.size())
     {
         rows.emplace_back("", "");
-        rows.emplace_back("Options:", "");
+        rows.emplace_back(std::string{bold} + "Options:" + std::string{norm}, "");
 
         for (auto&& el : options_)
         {
@@ -413,7 +413,7 @@ inline std::string args::usage(std::string_view program, std::string_view preamb
     if (params_.size())
     {
         rows.emplace_back("", "");
-        rows.emplace_back("Parameters:", "");
+        rows.emplace_back(std::string{bold} + "Parameters:" + std::string{norm}, "");
 
         for (auto&& el : params_)
         {

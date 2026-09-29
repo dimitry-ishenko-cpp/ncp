@@ -18,6 +18,9 @@
 namespace pgm
 {
 
+constexpr std::string_view bold = "\033[1m";
+constexpr std::string_view norm = "\033[0m";
+
 ////////////////////////////////////////////////////////////////////////////////
 /*! @struct argval
  *  @brief parsed values for an option or positional parameter
