@@ -185,7 +185,7 @@ bool apply_attrs(const node& source, node& target, bool announce = false)
 
     if (o.keep_user)
     {
-        if (!o.can_chown && source.file.user_id() != uid)
+        if (!o.can_chown && source.file.user_id() != o.uid)
         {
             if (o.keep_mode)
             {
