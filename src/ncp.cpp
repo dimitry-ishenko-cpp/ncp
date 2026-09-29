@@ -614,6 +614,7 @@ void copy_source(node& source, node& target)
     bool stream = false;
 
     if (!o.move)
+    {
         switch (source.file.type())
         {
             case io::file_type::regular:
@@ -632,6 +633,7 @@ void copy_source(node& source, node& target)
 
             default:;
         }
+    }
 
     if (stream) process_stream(source, target);
     else copy_tree(source, target);
