@@ -105,8 +105,8 @@ void printer::progress(report report)
             bar += " "; width -= 2;
 
             int len = *done * width / 100;
-            for (auto n = 0; n < len; ++n) bar += "|";
-            for (auto n = len; n < width; ++n) bar += ".";
+            for (auto n = 0; n < len; ++n) bar += "█";
+            for (auto n = len; n < width; ++n) bar += "░";
         }
     }
     else bar.clear();
