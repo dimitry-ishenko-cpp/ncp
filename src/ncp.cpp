@@ -771,7 +771,8 @@ given, and named pipes and sockets are skipped unless --special is given.
 migration, where you want to preserve as much as possible, including
 attributes, symlinks, special files, and so on.
 
-    It is shorthand for -Dfmort and does not include --acl or --hard-links.
+    It is shorthand for -Dfmort and does not include --acl or --hard-links,
+which you should add manually if the destination filesystem supports them.
 
 {0}Move Mode{1}
 
