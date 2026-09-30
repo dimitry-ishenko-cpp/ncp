@@ -1,3 +1,31 @@
+ncp (0.9) unstable; urgency=medium
+
+  * Prepare for 0.9 release
+  * Revert "ncp: tone down progress bar"
+  * printer: hide progress bar at the end
+  * ncp: add usage notes
+  * pgm/args: add bold esc sequences
+  * ncp: fix suid/sgid bug
+  * ncp: tweak
+  * ncp: tighten up file limit math
+  * ncp: typo
+  * printer: smoother speed
+  * printer: cache speed
+  * io: tweak
+  * ncp: refactor top level
+  * ncp: fail on link to target
+  * ncp: don't follow target links when moving
+  * ncp: extend --update=older to other file types
+  * ncp: tweak names
+  * ncp: add -n option
+  * ncp: forbid -U and --update together
+  * ncp: turn on recursive mode when moving
+  * ncp: expand comment
+  * ncp: don't follow links when moving
+  * printer: bigger progress bar
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Tue, 29 Sep 2026 23:16:46 -0400
+
 ncp (0.8) unstable; urgency=medium
 
   * Prepare for 0.8
