@@ -20,7 +20,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 enum print_option { retain, replace };
-enum report { current, final };
+enum report { interim, final };
 
 class printer
 {
@@ -96,5 +96,5 @@ public:
     void add_files_bytes_total(int n, io::file_size b) noexcept { add_files_total(n); add_bytes_total(b); }
     void add_files_bytes_copied(int n, io::file_size b) noexcept { add_files_copied(n); add_bytes_copied(b); }
 
-    void progress(report = current);
+    void progress(report = interim);
 };

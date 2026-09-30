@@ -48,7 +48,7 @@ void printer::progress(report report)
     auto bc = bytes_copied.load(std::memory_order_relaxed);
 
     auto pct = bt ? (100.0 * bc / bt) : 0;
-    if (report == final) done.force(pct); else done = pct;
+    if (report == interim) done = pct; else done.force(pct);
 
     if (auto delta = std::chrono::duration<double>{now - tick}.count())
     {
@@ -72,9 +72,9 @@ void printer::progress(report report)
     {
         width -= metric.size() - b_x;
 
-        std::string time = report == final
-            ? std::format(" ● {}", format_time(elapse))
-            : std::format(" ● {} ETA {}", format_time(elapse), format_time(remain));
+        std::string time = (report == interim)
+            ? std::format(" ● {} ETA {}", format_time(elapse), format_time(remain))
+            : std::format(" ● {}", format_time(elapse));
 
         if (width > time.size() - b_x)
         {
@@ -88,9 +88,9 @@ void printer::progress(report report)
     }
     else
     {
-        metric = report == final
-            ? std::format(" ● {}", format_time(elapse))
-            : std::format(" ● {} ETA {}", format_time(elapse), format_time(remain));
+        metric = (report == interim)
+            ? std::format(" ● {} ETA {}", format_time(elapse), format_time(remain))
+            : std::format(" ● {}", format_time(elapse));
         if (width > metric.size()) width -= metric.size(); else metric.clear();
     }
 
@@ -99,7 +99,7 @@ void printer::progress(report report)
     {
         width -= bar.size();
 
-        if (width > min_bar_width)
+        if (report == interim && width > min_bar_width)
         {
             if (width > max_bar_width) width = max_bar_width;
             bar += " "; width -= 2;
