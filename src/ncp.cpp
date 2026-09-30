@@ -802,18 +802,18 @@ before it is written:
     The --update option decides what happens when the destination already
 exists. Directories are not affected by this option.
 
-    none    Never overwrite existing files.
+  none      Never overwrite existing files.
 
-    all     Always overwrite them. This is the default.
+  all       Always overwrite them. This is the default.
 
-    changed Overwrite only if the size or modification time differs.
+  changed   Overwrite only if the size or modification time differs.
             Otherwise, the destination is considered up to date and its
             contents are not copied. Attributes are still updated (if
             requested) and, with --move, the source is removed.
 
-    size    Like 'changed', but compares only the size.
+  size      Like 'changed', but compares only the size.
 
-    older   Overwrite only if the destination has an older modification time.
+  older     Overwrite only if the destination has an older modification time.
             Unlike 'changed' and 'size', a destination that is not older than
             the source is skipped entirely, including attributes.
 
@@ -823,9 +823,9 @@ exists. Directories are not affected by this option.
 or if the destination is one, {0}ncp{1} behaves like {0}cp{1}, reading the data from the
 source and writing it to the destination.
 
-    ncp /dev/sda disk.img    Reads the device into a regular file.
-    ncp disk.img /dev/sdb    Writes the image to the device.
-    ncp pipe file            Saves whatever is written to the pipe.
+  ncp /dev/sda disk.img         Reads the device into a regular file.
+  ncp disk.img /dev/sdb         Writes the image to the device.
+  ncp pipe file                 Saves whatever is written to the pipe.
 
     This applies only to command-line arguments, never to items found while
 recursing, and is not used with --move.
