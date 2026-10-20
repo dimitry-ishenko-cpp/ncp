@@ -186,7 +186,7 @@ may even slow things down, on mechanical hard drives.
 Binary packages for Debian, Ubuntu, RaspberryPi and other Debian-based
 distributions can be installed from the [CCCP Linux Package
 Archive](https://github.com/cccp-linux/archive). Follow their instructions to
-set up the archive and be sure to add the <ins>_main_</ins> component. After that:
+set up the archive. Then, run:
 
 ```shell
 sudo apt install ncp
