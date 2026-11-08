@@ -1,3 +1,11 @@
+ncp (0.11) unstable; urgency=medium
+
+  * Prepare for 0.11 release
+  * tests => test
+  * Make tests optional
+
+ -- Dimitry Ishenko <dimitry.ishenko@gmail.com>  Sun, 08 Nov 2026 10:20:55 -0500
+
 ncp (0.10) unstable; urgency=medium
 
   * Prepare for 0.10 release
