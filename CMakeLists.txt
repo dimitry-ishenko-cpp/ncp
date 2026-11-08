@@ -4,5 +4,10 @@ project(ncp VERSION 0.10)
 add_definitions(-DVERSION="${PROJECT_VERSION}")
 
 add_subdirectory(src)
-enable_testing()
-add_subdirectory(tests)
+
+option(BUILD_TESTS "Build tests" ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
